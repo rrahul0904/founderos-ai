@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: founderos
+      POSTGRES_PASSWORD: founderos
+      POSTGRES_DB: founderos
+    ports:
+      - "5432:5432"
+    volumes:
+      - founderos_pg:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U founderos -d founderos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  founderos_pg:
