@@ -1,9 +1,9 @@
 {
   "name": "@founderos/agents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@founderos/core": "0.1.0" },
+  "dependencies": { "@founderos/core": "0.2.0" },
   "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json" },
-  "devDependencies": { "typescript": "^5.9.2" }
+  "devDependencies": { "@types/node": "^22.18.0", "typescript": "^5.9.2" }
 }
