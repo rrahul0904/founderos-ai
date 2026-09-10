@@ -1,25 +1,28 @@
 # API
 
-## `GET /api/health`
-Returns service health.
+All project APIs are organization-scoped. In `AUTH_MODE=shared-key`, authenticate with the `founderos_session` HTTP-only cookie or `Authorization: Bearer <FOUNDEROS_API_KEY>`.
 
-## `GET /api/projects`
-Lists projects in the current development repository.
+## Projects
+- `GET /api/projects`
+- `POST /api/projects` — `{ "idea": "..." }`
+- `POST /api/projects/:id/run` — `{ "agent": "validation|product|architecture|learning" }`
 
-## `POST /api/projects`
+## Evidence intelligence
+- `GET /api/projects/:id/evidence`
+- `POST /api/projects/:id/evidence`
+- `GET /api/projects/:id/claims`
+- `POST /api/projects/:id/claims`
+- `POST /api/projects/:id/research` — `{ "url":"https://..." }` or `{ "query":"..." }`
+- `GET /api/projects/:id/jobs`
 
-```json
-{ "idea": "A sufficiently detailed product idea..." }
-```
+## Governance
+- `GET /api/projects/:id/budget`
+- `PUT /api/projects/:id/budget`
+- `GET /api/projects/:id/audit`
 
-Creates a project brain at lifecycle stage `idea`.
+## Auth
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 
-## `POST /api/projects/:id/run`
-
-```json
-{ "agent": "validation" }
-```
-
-Allowed agents: `validation`, `product`, `architecture`, `learning`.
-
-The zero-config runtime uses deterministic local outputs. Set `AI_PROVIDER=openai` and `OPENAI_API_KEY` to enable the hosted provider adapter.
+## Health
+- `GET /api/health`
