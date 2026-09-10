@@ -1,5 +1,5 @@
 {
   "name":"founderos-ai","version":"0.2.0","private":true,"workspaces":["apps/*","packages/*"],
-  "scripts":{"dev":"npm run dev --workspace=@founderos/web","dev:worker":"npm run dev --workspace=@founderos/worker","build":"npm run build --workspace=@founderos/web","start":"npm run start --workspace=@founderos/web","typecheck":"npm run typecheck --workspaces --if-present","test":"tsx --test packages/agents/src/*.test.ts packages/core/src/*.test.ts","lint":"npm run lint --workspace=@founderos/web","verify":"npm run typecheck && npm test && npm run build","migrate":"./scripts/migrate.sh"},
+  "scripts":{"dev":"npm run dev --workspace=@founderos/web","dev:worker":"npm run dev --workspace=@founderos/worker","build":"npm run build --workspace=@founderos/web","start":"npm run start --workspace=@founderos/web","typecheck":"npm run typecheck --workspaces --if-present","test":"tsx --test packages/agents/src/*.test.ts packages/core/src/*.test.ts","lint":"npm run lint --workspace=@founderos/web","verify":"npm run typecheck && npm test && npm run build","migrate":"sh scripts/migrate.sh"},
   "devDependencies":{"tsx":"^4.20.5","typescript":"^5.9.2"},"engines":{"node":">=22"}
 }
