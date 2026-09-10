@@ -1,36 +1,22 @@
 import pg from "pg";
-import type { FounderProject } from "@founderos/core";
-
-export interface ProjectRepository {
-  get(id: string): Promise<FounderProject | null>;
-  list(): Promise<FounderProject[]>;
-  upsert(project: FounderProject): Promise<void>;
-}
-
-export function createPool(connectionString = process.env.DATABASE_URL) {
-  if (!connectionString) throw new Error("DATABASE_URL is required for PostgreSQL persistence");
-  return new pg.Pool({ connectionString, max: 10, idleTimeoutMillis: 30_000 });
-}
-
-export class PostgresProjectRepository implements ProjectRepository {
-  constructor(private readonly pool: pg.Pool) {}
-
-  async get(id: string) {
-    const result = await this.pool.query("select payload from projects where id = $1", [id]);
-    return (result.rows[0]?.payload as FounderProject | undefined) ?? null;
-  }
-
-  async list() {
-    const result = await this.pool.query("select payload from projects order by updated_at desc limit 100");
-    return result.rows.map((row) => row.payload as FounderProject);
-  }
-
-  async upsert(project: FounderProject) {
-    await this.pool.query(
-      `insert into projects (id, name, stage, payload, created_at, updated_at)
-       values ($1,$2,$3,$4,$5,$6)
-       on conflict (id) do update set name=excluded.name, stage=excluded.stage, payload=excluded.payload, updated_at=excluded.updated_at`,
-      [project.id, project.name, project.stage, project, project.createdAt, project.updatedAt]
-    );
-  }
-}
+import type { AgentRunRecord, BudgetStatus, ClaimRecord, EvidenceRecord, FounderProject } from "@founderos/core";
+export interface ResearchJobInput{projectId:string;organizationId:string;kind:"research.capture_url"|"research.search";payload:Record<string,unknown>;idempotencyKey?:string}
+export interface AuditInput{organizationId:string;projectId?:string|null;actorUserId?:string|null;eventName:string;properties?:Record<string,unknown>}
+export interface FounderRepository{getProject(id:string,organizationId:string):Promise<FounderProject|null>;listProjects(organizationId:string):Promise<FounderProject[]>;upsertProject(project:FounderProject):Promise<void>;listEvidence(projectId:string,organizationId:string,limit?:number):Promise<EvidenceRecord[]>;addEvidence(record:EvidenceRecord,organizationId:string):Promise<void>;listClaims(projectId:string,organizationId:string):Promise<ClaimRecord[]>;addClaim(claim:ClaimRecord,organizationId:string):Promise<void>;addAgentRun(projectId:string,organizationId:string,run:AgentRunRecord,input?:Record<string,unknown>):Promise<void>;enqueueJob(input:ResearchJobInput):Promise<string>;listJobs(projectId:string,organizationId:string,limit?:number):Promise<Array<Record<string,unknown>>>;getBudgetStatus(projectId:string,organizationId:string):Promise<BudgetStatus>;setBudget(projectId:string,organizationId:string,dailyBudgetUsd:number,perRunBudgetUsd:number):Promise<BudgetStatus>;writeAudit(input:AuditInput):Promise<void>;listAudit(projectId:string,organizationId:string,limit?:number):Promise<Array<Record<string,unknown>>>}
+export function createPool(connectionString=process.env.DATABASE_URL){if(!connectionString)throw new Error("DATABASE_URL is required for PostgreSQL persistence");return new pg.Pool({connectionString,max:10,idleTimeoutMillis:30_000});}
+function rowToEvidence(row:Record<string,unknown>):EvidenceRecord{return{id:String(row.id),projectId:String(row.project_id),sourceUrl:row.source_url?String(row.source_url):null,sourceType:row.source_type as EvidenceRecord["sourceType"],title:row.title?String(row.title):null,claim:String(row.claim),excerpt:row.excerpt?String(row.excerpt):null,confidence:Number(row.confidence??.5),contentHash:row.content_hash?String(row.content_hash):null,collectedAt:new Date(String(row.collected_at)).toISOString(),metadata:(row.metadata as Record<string,unknown>)??{}};}
+export class PostgresFounderRepository implements FounderRepository{constructor(private readonly pool:ReturnType<typeof createPool>){}
+async getProject(id:string,organizationId:string){const r=await this.pool.query("select payload from projects where id=$1 and organization_id=$2",[id,organizationId]);return(r.rows[0]?.payload as FounderProject|undefined)??null;}
+async listProjects(organizationId:string){const r=await this.pool.query("select payload from projects where organization_id=$1 order by updated_at desc limit 100",[organizationId]);return r.rows.map(row=>row.payload as FounderProject);}
+async upsertProject(project:FounderProject){await this.pool.query(`insert into projects (id,organization_id,name,stage,payload,created_at,updated_at) values ($1,$2,$3,$4,$5,$6,$7) on conflict(id) do update set organization_id=excluded.organization_id,name=excluded.name,stage=excluded.stage,payload=excluded.payload,updated_at=excluded.updated_at`,[project.id,project.organizationId,project.name,project.stage,project,project.createdAt,project.updatedAt]);}
+async listEvidence(projectId:string,organizationId:string,limit=100){const r=await this.pool.query(`select e.* from evidence e join projects p on p.id=e.project_id where e.project_id=$1 and p.organization_id=$2 order by e.collected_at desc limit $3`,[projectId,organizationId,limit]);return r.rows.map((row:Record<string,unknown>)=>rowToEvidence(row));}
+async addEvidence(record:EvidenceRecord,organizationId:string){await this.pool.query(`insert into evidence (id,project_id,source_url,source_type,title,claim,excerpt,confidence,content_hash,collected_at,metadata) select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 where exists(select 1 from projects where id=$2 and organization_id=$12)`,[record.id,record.projectId,record.sourceUrl??null,record.sourceType,record.title??null,record.claim,record.excerpt??null,record.confidence,record.contentHash??null,record.collectedAt,record.metadata,organizationId]);}
+async listClaims(projectId:string,organizationId:string){const r=await this.pool.query(`select c.id,c.project_id,c.statement,c.status,c.confidence,c.created_at,coalesce(array_agg(ce.evidence_id) filter(where ce.evidence_id is not null),'{}') as evidence_ids from claims c join projects p on p.id=c.project_id left join claim_evidence ce on ce.claim_id=c.id where c.project_id=$1 and p.organization_id=$2 group by c.id order by c.created_at desc`,[projectId,organizationId]);return r.rows.map((row:Record<string,unknown>)=>({id:String(row.id),projectId:String(row.project_id),statement:String(row.statement),status:row.status as ClaimRecord["status"],confidence:Number(row.confidence),evidenceIds:(row.evidence_ids as string[])??[],createdAt:new Date(String(row.created_at)).toISOString()}));}
+async addClaim(claim:ClaimRecord,organizationId:string){const client=await this.pool.connect();try{await client.query("begin");const allowed=await client.query("select 1 from projects where id=$1 and organization_id=$2",[claim.projectId,organizationId]);if(!allowed.rowCount)throw new Error("Project not found");await client.query("insert into claims (id,project_id,statement,status,confidence,created_at) values ($1,$2,$3,$4,$5,$6)",[claim.id,claim.projectId,claim.statement,claim.status,claim.confidence,claim.createdAt]);for(const evidenceId of claim.evidenceIds){await client.query(`insert into claim_evidence (claim_id,evidence_id,relationship) select $1,$2,'supports' where exists(select 1 from evidence where id=$2 and project_id=$3) on conflict do nothing`,[claim.id,evidenceId,claim.projectId]);}await client.query("commit");}catch(error){await client.query("rollback");throw error;}finally{client.release();}}
+async addAgentRun(projectId:string,organizationId:string,run:AgentRunRecord,input:Record<string,unknown>={}){const allowed=await this.pool.query("select 1 from projects where id=$1 and organization_id=$2",[projectId,organizationId]);if(!allowed.rowCount)throw new Error("Project not found");await this.pool.query(`insert into agent_runs (id,project_id,agent,provider,model,status,input,output,latency_ms,input_tokens,output_tokens,cost_usd,created_at,completed_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,[run.id,projectId,run.agent,run.provider,run.model??null,run.status??"completed",input,{text:run.output,evidence_ids:run.evidenceIds??[]},run.latencyMs??null,run.inputTokens??null,run.outputTokens??null,run.costUsd??0,run.createdAt]);}
+async enqueueJob(input:ResearchJobInput){const r=await this.pool.query(`insert into jobs (project_id,organization_id,kind,payload,idempotency_key) select $1,$2,$3,$4,$5 where exists(select 1 from projects where id=$1 and organization_id=$2) on conflict(idempotency_key) do update set idempotency_key=excluded.idempotency_key returning id`,[input.projectId,input.organizationId,input.kind,input.payload,input.idempotencyKey??null]);if(!r.rows[0]?.id)throw new Error("Unable to enqueue job");return String(r.rows[0].id);}
+async listJobs(projectId:string,organizationId:string,limit=50){const r=await this.pool.query(`select id,kind,status,attempts,max_attempts,available_at,last_error,created_at,completed_at from jobs where project_id=$1 and organization_id=$2 order by created_at desc limit $3`,[projectId,organizationId,limit]);return r.rows;}
+async getBudgetStatus(projectId:string,organizationId:string):Promise<BudgetStatus>{const r=await this.pool.query(`select p.daily_budget_usd,p.per_run_budget_usd,coalesce(sum(ar.cost_usd) filter(where ar.created_at>=date_trunc('day',now())),0) as spent_today_usd from projects p left join agent_runs ar on ar.project_id=p.id where p.id=$1 and p.organization_id=$2 group by p.id`,[projectId,organizationId]);if(!r.rows[0])throw new Error("Project not found");const dailyBudgetUsd=Number(r.rows[0].daily_budget_usd),perRunBudgetUsd=Number(r.rows[0].per_run_budget_usd),spentTodayUsd=Number(r.rows[0].spent_today_usd);return{dailyBudgetUsd,perRunBudgetUsd,spentTodayUsd,remainingTodayUsd:Math.max(0,dailyBudgetUsd-spentTodayUsd)};}
+async setBudget(projectId:string,organizationId:string,dailyBudgetUsd:number,perRunBudgetUsd:number){const r=await this.pool.query("update projects set daily_budget_usd=$3,per_run_budget_usd=$4,updated_at=now() where id=$1 and organization_id=$2 returning id",[projectId,organizationId,dailyBudgetUsd,perRunBudgetUsd]);if(!r.rowCount)throw new Error("Project not found");return this.getBudgetStatus(projectId,organizationId);}
+async writeAudit(input:AuditInput){await this.pool.query("insert into audit_events (organization_id,project_id,actor_user_id,event_name,properties) values ($1,$2,$3,$4,$5)",[input.organizationId,input.projectId??null,input.actorUserId??null,input.eventName,input.properties??{}]);}
+async listAudit(projectId:string,organizationId:string,limit=100){const r=await this.pool.query("select id,event_name,properties,occurred_at from audit_events where project_id=$1 and organization_id=$2 order by occurred_at desc limit $3",[projectId,organizationId,limit]);return r.rows;}}
