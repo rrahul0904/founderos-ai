@@ -1,48 +1,22 @@
+import { createHash } from "node:crypto";
+import { isIP } from "node:net";
+import { lookup } from "node:dns/promises";
 import pg from "pg";
 
 const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  console.error("DATABASE_URL is required for the durable worker");
-  process.exit(1);
-}
-
+if (!databaseUrl) { console.error("DATABASE_URL is required for the durable worker"); process.exit(1); }
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 4 });
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function claim() {
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    const result = await client.query(`
-      select id, kind, payload
-      from jobs
-      where status = 'queued' and available_at <= now()
-      order by created_at asc
-      for update skip locked
-      limit 1
-    `);
-    const job = result.rows[0];
-    if (!job) { await client.query("commit"); return null; }
-    await client.query("update jobs set status='running', leased_until=now()+interval '60 seconds', attempts=attempts+1 where id=$1", [job.id]);
-    await client.query("commit");
-    return job as { id: string; kind: string; payload: unknown };
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function complete(id: string) {
-  await pool.query("update jobs set status='completed', completed_at=now(), leased_until=null where id=$1", [id]);
-}
-
-console.log("FounderOS worker started");
-while (true) {
-  const job = await claim();
-  if (!job) { await sleep(1500); continue; }
-  console.log(`processing ${job.kind} ${job.id}`);
-  // Phase 1 will route research/browser/build jobs to isolated executors.
-  await complete(job.id);
-}
+const sleep = (ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+const MAX_SOURCE_BYTES=Number(process.env.MAX_SOURCE_BYTES??2_000_000);
+type Job={id:string;project_id:string;organization_id:string;kind:"research.capture_url"|"research.search";payload:Record<string,unknown>;attempts:number;max_attempts:number};
+function isPrivateIp(address:string){if(isIP(address)===4){const[a,b]=address.split(".").map(Number);return a===10||a===127||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||a===0;}if(isIP(address)===6){const n=address.toLowerCase();return n==="::1"||n==="::"||n.startsWith("fc")||n.startsWith("fd")||n.startsWith("fe8")||n.startsWith("fe9")||n.startsWith("fea")||n.startsWith("feb");}return true;}
+async function assertPublicUrl(raw:string){const url=new URL(raw);if(!['http:','https:'].includes(url.protocol))throw new Error("Only public http(s) sources are allowed");const host=url.hostname.toLowerCase();if(host==="localhost"||host.endsWith(".local"))throw new Error("Local destinations are blocked");const addresses=await lookup(host,{all:true,verbatim:true});if(!addresses.length||addresses.some(item=>isPrivateIp(item.address)))throw new Error("Private or unresolved destinations are blocked");return url;}
+async function safeFetch(raw:string,redirects=0):Promise<{url:string;title:string;text:string;hash:string;contentType:string}>{if(redirects>3)throw new Error("Too many redirects");const url=await assertPublicUrl(raw);const response=await fetch(url,{redirect:"manual",headers:{"user-agent":"FounderOS-EvidenceBot/0.2 (+source-capture)"},signal:AbortSignal.timeout(15_000)});if(response.status>=300&&response.status<400){const location=response.headers.get("location");if(!location)throw new Error(`Redirect ${response.status} without location`);return safeFetch(new URL(location,url).toString(),redirects+1);}if(!response.ok)throw new Error(`Source returned HTTP ${response.status}`);const contentType=response.headers.get("content-type")?.split(";")[0]??"";if(!contentType.startsWith("text/html")&&!contentType.startsWith("text/plain"))throw new Error(`Unsupported content type ${contentType||"unknown"}`);const length=Number(response.headers.get("content-length")??0);if(length>MAX_SOURCE_BYTES)throw new Error("Source exceeds capture size limit");const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.byteLength>MAX_SOURCE_BYTES)throw new Error("Source exceeds capture size limit");const rawText=new TextDecoder().decode(bytes);const title=/<title[^>]*>([\s\S]*?)<\/title>/i.exec(rawText)?.[1]?.replace(/\s+/g," ").trim().slice(0,500)??url.hostname;const text=rawText.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi," ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi," ").replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi," ").replace(/<[^>]+>/g," ").replace(/&nbsp;/gi," ").replace(/&amp;/gi,"&").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&quot;/gi,'"').replace(/&#39;/gi,"'").replace(/\s+/g," ").trim();return{url:url.toString(),title,text:text.slice(0,12_000),hash:createHash("sha256").update(bytes).digest("hex"),contentType};}
+async function insertEvidence(input:{projectId:string;organizationId:string;sourceUrl:string;sourceType:"web"|"search";title:string;claim:string;excerpt:string;confidence:number;contentHash:string;metadata?:Record<string,unknown>}){const result=await pool.query(`insert into evidence (project_id,source_url,source_type,title,claim,excerpt,confidence,content_hash,metadata) select $1,$2,$3,$4,$5,$6,$7,$8,$9 where exists (select 1 from projects where id=$1 and organization_id=$10) and not exists (select 1 from evidence where project_id=$1 and content_hash=$8) returning id`,[input.projectId,input.sourceUrl,input.sourceType,input.title,input.claim,input.excerpt,input.confidence,input.contentHash,input.metadata??{},input.organizationId]);return result.rows[0]?.id as string|undefined;}
+async function captureUrl(job:Job){const rawUrl=typeof job.payload.url==="string"?job.payload.url:"";if(!rawUrl)throw new Error("research.capture_url requires payload.url");const source=await safeFetch(rawUrl);const requestedClaim=typeof job.payload.claim==="string"?job.payload.claim.trim():"";await pool.query(`insert into source_snapshots (project_id,source_url,content_hash,content_type,captured_text) values ($1,$2,$3,$4,$5) on conflict (project_id,content_hash) do nothing`,[job.project_id,source.url,source.hash,source.contentType,source.text]);await insertEvidence({projectId:job.project_id,organizationId:job.organization_id,sourceUrl:source.url,sourceType:"web",title:source.title,claim:requestedClaim||`Captured source: ${source.title}`,excerpt:source.text,confidence:requestedClaim?.65:.45,contentHash:source.hash,metadata:{content_type:source.contentType,captured_by:"research.capture_url"}});}
+async function searchWeb(job:Job){const query=typeof job.payload.query==="string"?job.payload.query.trim():"";if(!query)throw new Error("research.search requires payload.query");const key=process.env.TAVILY_API_KEY;if(!key)throw new Error("TAVILY_API_KEY is required for research.search jobs");const response=await fetch("https://api.tavily.com/search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({api_key:key,query,search_depth:"advanced",max_results:5,include_answer:false,include_raw_content:false}),signal:AbortSignal.timeout(20_000)});if(!response.ok)throw new Error(`Search provider returned HTTP ${response.status}`);const data=await response.json() as {results?:Array<{url?:string;title?:string;content?:string;score?:number}>};for(const result of data.results??[]){if(!result.url||!result.content)continue;const hash=createHash("sha256").update(`${result.url}\n${result.content}`).digest("hex");await pool.query(`insert into source_snapshots (project_id,source_url,content_hash,content_type,captured_text) values ($1,$2,$3,'text/search-snippet',$4) on conflict (project_id,content_hash) do nothing`,[job.project_id,result.url,hash,result.content.slice(0,12_000)]);await insertEvidence({projectId:job.project_id,organizationId:job.organization_id,sourceUrl:result.url,sourceType:"search",title:result.title??new URL(result.url).hostname,claim:`Search evidence for: ${query}`,excerpt:result.content.slice(0,12_000),confidence:Math.max(.35,Math.min(.85,Number(result.score??.5))),contentHash:hash,metadata:{query,provider:"tavily",score:result.score??null}});}}
+async function claim():Promise<Job|null>{const client=await pool.connect();try{await client.query("begin");const result=await client.query(`select id,project_id,organization_id,kind,payload,attempts,max_attempts from jobs where ((status='queued' and available_at<=now()) or (status='running' and leased_until<now())) and attempts<max_attempts order by created_at asc for update skip locked limit 1`);const job=result.rows[0] as Job|undefined;if(!job){await client.query("commit");return null;}await client.query("update jobs set status='running',leased_until=now()+interval '90 seconds',attempts=attempts+1 where id=$1",[job.id]);await client.query("commit");return{...job,attempts:Number(job.attempts)+1,max_attempts:Number(job.max_attempts)};}catch(error){await client.query("rollback");throw error;}finally{client.release();}}
+async function complete(job:Job){await pool.query("update jobs set status='completed',completed_at=now(),leased_until=null,last_error=null where id=$1",[job.id]);await pool.query("insert into audit_events (organization_id,project_id,event_name,properties) values ($1,$2,'research.completed',$3)",[job.organization_id,job.project_id,{job_id:job.id,kind:job.kind}]);}
+async function fail(job:Job,error:unknown){const message=error instanceof Error?error.message:String(error);const exhausted=job.attempts>=job.max_attempts;const delaySeconds=Math.min(300,2**Math.min(job.attempts,8));await pool.query(`update jobs set status=$2,last_error=$3,leased_until=null,available_at=case when $2='queued' then now()+($4||' seconds')::interval else available_at end where id=$1`,[job.id,exhausted?"failed":"queued",message.slice(0,2000),delaySeconds]);console.error(JSON.stringify({event:"job_failed",job_id:job.id,kind:job.kind,exhausted,error:message}));}
+async function execute(job:Job){if(job.kind==="research.capture_url")return captureUrl(job);if(job.kind==="research.search")return searchWeb(job);throw new Error(`Unsupported job kind: ${job.kind}`);}
+console.log(JSON.stringify({event:"worker_started",service:"founderos-worker"}));while(true){const job=await claim();if(!job){await sleep(1200);continue;}try{await execute(job);await complete(job);console.log(JSON.stringify({event:"job_completed",job_id:job.id,kind:job.kind}));}catch(error){await fail(job,error);}}
