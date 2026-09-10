@@ -14,7 +14,14 @@ function safeEqual(left: string, right: string) {
   return timingSafeEqual(a, b);
 }
 
-function configuredKey() { return process.env.FOUNDEROS_API_KEY?.trim() || null; }
+function configuredKey() {
+  return process.env.FOUNDEROS_API_KEY?.trim() || null;
+}
+
+export function validateAccessKey(candidate: string) {
+  const expected = configuredKey();
+  return Boolean(expected && candidate && safeEqual(candidate, expected));
+}
 
 export async function getPrincipal(request?: Request): Promise<Principal | null> {
   const mode = process.env.AUTH_MODE ?? "dev";
@@ -23,13 +30,11 @@ export async function getPrincipal(request?: Request): Promise<Principal | null>
     return { userId: DEV_USER_ID, organizationId: process.env.FOUNDEROS_ORG_ID || DEV_ORGANIZATION_ID, role: "owner" };
   }
   if (mode !== "shared-key") return null;
-  const expected = configuredKey();
-  if (!expected) return null;
   const bearer = request?.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
   const cookieStore = await cookies();
   const cookieToken = cookieStore.get("founderos_session")?.value ?? null;
   const token = bearer || cookieToken;
-  if (!token || !safeEqual(token, expected)) return null;
+  if (!token || !validateAccessKey(token)) return null;
   return { userId: DEV_USER_ID, organizationId: process.env.FOUNDEROS_ORG_ID || DEV_ORGANIZATION_ID, role: "owner" };
 }
 
@@ -39,4 +44,6 @@ export async function requirePrincipal(request?: Request) {
   return { principal, response: null };
 }
 
-export function authMode() { return process.env.AUTH_MODE ?? "dev"; }
+export function authMode() {
+  return process.env.AUTH_MODE ?? "dev";
+}
