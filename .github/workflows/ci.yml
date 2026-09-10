@@ -10,6 +10,20 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: founderos
+          POSTGRES_PASSWORD: founderos
+          POSTGRES_DB: founderos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U founderos -d founderos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,6 +31,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts
+      - name: Validate database schema and migration
+        env:
+          PGPASSWORD: founderos
+          DATABASE_URL: postgres://founderos:founderos@localhost:5432/founderos
+        run: |
+          psql -h localhost -U founderos -d founderos -v ON_ERROR_STOP=1 -f infra/postgres/init.sql
+          npm run migrate
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
