@@ -1,21 +1,27 @@
 # FounderOS AI
 
-FounderOS is an evidence-first AI product operating system inspired by the strongest idea behind tools such as Falbor: keep one durable project context from **idea → evidence → decision → build → deploy → learn**.
+FounderOS is an evidence-first AI product operating system: **idea → evidence → decision → spec → architecture → build → deploy → learn**.
 
-This repository is an independent implementation. It does not copy Falbor source code, branding, or proprietary assets.
+It is an independent product inspired by the general context-continuity problem visible in tools such as Falbor; it does not copy Falbor source code, branding, or proprietary assets.
 
-## What works in Phase 0
+## Phase 1 capabilities
 
-- Create a product project from a raw idea.
-- Maintain a structured project memory and lifecycle state.
-- Run four specialized agents: Validation, Product, Architecture, and Growth/Learning.
-- Work without paid API keys using a deterministic mock provider.
-- Expose REST endpoints for projects and agent runs.
-- Persist through an abstraction designed for PostgreSQL, with an in-memory runtime fallback for zero-config local use.
-- Ship a PostgreSQL schema for projects, evidence, decisions, runs, events, and durable jobs.
-- Include a worker scaffold, health checks, Docker, Compose, CI, tests, and deployment documentation.
+- durable project brain with organization scoping
+- evidence records, source snapshots and SHA-256 provenance
+- claim ↔ evidence graph
+- manual evidence, URL capture and optional web search
+- durable research worker with leases/retries/idempotency
+- SSRF-oriented URL safety controls
+- evidence-grounded validation/product/architecture/learning agents
+- local deterministic AI mode plus optional OpenAI provider
+- provider/model/token/latency/cost run telemetry
+- daily and per-run AI budgets
+- audit events
+- PostgreSQL persistence with an in-memory zero-config development fallback
+- shared-key production auth option
+- Docker, migration scripts and CI
 
-## Quick start
+## Quick start without paid services
 
 ```bash
 cp .env.example .env.local
@@ -23,15 +29,33 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+With `DATABASE_URL` blank, the web UI uses in-memory development storage. Manual evidence and local deterministic agents work immediately.
 
-For PostgreSQL:
+## Enable durable PostgreSQL + research worker
 
 ```bash
 docker compose up -d postgres
+export DATABASE_URL=postgres://founderos:founderos@localhost:5432/founderos
+npm run dev
+npm run dev:worker
 ```
 
-The initial UI still operates without a database; PostgreSQL wiring is deliberately isolated behind `@founderos/db` so the next phase can switch repositories without rewriting product logic.
+For an existing Phase 0 database:
+
+```bash
+npm run migrate
+```
+
+`TAVILY_API_KEY` enables search-query research jobs. It is not required for manual evidence or direct URL capture. `OPENAI_API_KEY` is optional; set `AI_PROVIDER=openai` only when you want hosted model runs.
+
+## Production auth
+
+```bash
+AUTH_MODE=shared-key
+FOUNDEROS_API_KEY='replace-with-a-long-random-secret'
+```
+
+The browser login page stores the key in an HTTP-only session cookie. Multi-user SSO/RBAC is intentionally not represented as complete yet.
 
 ## Verify
 
@@ -39,19 +63,4 @@ The initial UI still operates without a database; PostgreSQL wiring is deliberat
 npm run verify
 ```
 
-## Repository map
-
-```text
-apps/web             Next.js product workspace + APIs
-apps/worker          durable-job worker scaffold
-packages/core        domain types, lifecycle, project memory
-packages/agents      specialized AI agents + provider abstraction
-packages/db          persistence contracts + PostgreSQL adapter foundation
-packages/observability telemetry/event primitives
-infra/postgres       canonical relational schema
-docs                 product, architecture, API, security, roadmap
-```
-
-## Product principle
-
-The system should not blindly build whatever a user types. It should collect evidence, make uncertainty visible, preserve product decisions, and use post-deployment signals to drive the next iteration.
+See `docs/PHASE1_IMPLEMENTATION.md` for the exact implemented/pending boundary.

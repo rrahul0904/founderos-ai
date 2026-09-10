@@ -1,0 +1,2 @@
+import { LoginForm } from "../../components/login-form";
+export default function LoginPage(){return <main className="shell"><div className="container"><div className="hero"><div className="eyebrow">FounderOS access</div><h1 style={{fontSize:"48px"}}>Open your product brain.</h1><p>In shared-key mode, enter the access key configured on the server. Development mode does not require login.</p><LoginForm/></div></div></main>}

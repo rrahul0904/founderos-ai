@@ -1,18 +1,20 @@
 # Security model
 
-## Required production controls
+## Implemented controls
 
-1. Add authentication and tenant-scoped authorization before multi-user deployment.
-2. Keep model/API tokens server-side only.
-3. Treat researched pages, repository content and uploaded documents as untrusted input.
-4. Never allow external content to expand an agent's tool permissions.
-5. Store source provenance and immutable hashes for high-impact evidence.
-6. Require approval gates for destructive Git, deployment, billing, database or production actions.
-7. Add SSRF defenses and egress policy before enabling arbitrary URL research.
-8. Encrypt secrets at rest and use a managed secret store in production.
-9. Emit an audit event for every tool call and privileged action.
-10. Use isolated sandboxes for generated code; never execute it in the web process.
+1. Organization ID is enforced in project/evidence/job/budget/audit repository queries.
+2. Production can use `AUTH_MODE=shared-key`; dev auth refuses production unless `ALLOW_DEV_AUTH=true` is explicitly set.
+3. Provider/API secrets remain server-side.
+4. Research URL capture accepts only HTTP(S), rejects local/private destinations after DNS resolution, validates each redirect, limits content type, source size, redirect count and request time.
+5. Captured sources receive SHA-256 hashes and source snapshots.
+6. Full retrieved page bodies are not automatically injected into agent prompts; agents receive normalized claim summaries and source URLs.
+7. Research jobs use leases, retries, attempt caps and idempotency keys.
+8. Agent spend has daily/per-run controls and run-level usage/cost telemetry.
+9. Privileged product/research actions emit audit events.
 
-## Prompt-injection boundary
+## Production hardening still required
 
-Retrieved content is data, not instructions. Workers should strip active content, annotate origin, and pass excerpts to models inside a clearly delimited untrusted-data envelope.
+- Put workers behind an outbound proxy/network policy to close DNS-rebinding/egress edge cases at the infrastructure layer.
+- Replace shared-key auth with SSO or multi-user credential/OIDC authentication before collaborative public SaaS use.
+- Use a managed secrets service.
+- Sandboxed code execution remains a Phase 2 requirement.

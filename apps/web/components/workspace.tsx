@@ -1,113 +1,16 @@
 "use client";
-
 import { useState } from "react";
-import type { FounderProject } from "@founderos/core";
+import type { BudgetStatus, EvidenceRecord, FounderProject } from "@founderos/core";
 import type { AgentName } from "@founderos/agents";
 
-const agents: Array<[AgentName, string, string]> = [
-  ["validation", "Validation agent", "Evidence, competitors, risks, score"],
-  ["product", "Product agent", "ICP, MVP, outcomes, acceptance criteria"],
-  ["architecture", "Architecture agent", "System design, stack, boundaries, cost"],
-  ["learning", "Learning agent", "Telemetry, experiments, next iteration"]
-];
+const agents:Array<[AgentName,string,string]>=[["validation","Validation agent","Evidence, competitors, risks"],["product","Product agent","ICP, MVP, outcomes"],["architecture","Architecture agent","System design, cost, security"],["learning","Learning agent","Telemetry, experiments, iteration"]];
+const stages=["idea","evidence","decision","spec","architecture","build","deploy","learn"];
 
-const stages = ["idea", "evidence", "decision", "spec", "architecture", "build", "deploy", "learn"];
-
-export function Workspace({ initial }: { initial: FounderProject }) {
-  const [project, setProject] = useState(initial);
-  const [busy, setBusy] = useState<AgentName | null>(null);
-
-  async function run(agent: AgentName) {
-    setBusy(agent);
-    try {
-      const response = await fetch(`/api/projects/${project.id}/run`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ agent })
-      });
-      if (!response.ok) throw new Error("Agent run failed");
-      setProject(await response.json());
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const currentIndex = stages.indexOf(project.stage);
-  return (
-    <div className="workspace">
-      <aside className="panel">
-        <div className="panel-head"><b>Lifecycle</b><span className="small muted">v0.1</span></div>
-        <ul className="stage-list">
-          {stages.map((stage, index) => {
-            const status = index < currentIndex ? "done" : index === currentIndex ? "active" : "pending";
-            return <li className={`stage ${status}`} key={stage}>{stage[0].toUpperCase() + stage.slice(1)}</li>;
-          })}
-        </ul>
-      </aside>
-
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <div className="small muted">PROJECT BRAIN</div>
-            <h2 className="project-title">{project.name}</h2>
-          </div>
-          <span className="pill">{project.stage}</span>
-        </div>
-        <div className="panel-body">
-          <div className="grid2">
-            <div className="card">
-              <h3>Original idea</h3>
-              <p>{project.idea}</p>
-            </div>
-            <div className="card">
-              <h3>Evidence readiness</h3>
-              <div className="score">{project.readiness}<small>/100</small></div>
-              <p>Readiness rises only when assumptions become evidence-backed decisions.</p>
-            </div>
-          </div>
-
-          <div style={{height:14}} />
-          <div className="card">
-            <h3>Latest intelligence</h3>
-            <div className="output">{project.latestOutput || "Run an agent to turn this idea into structured product intelligence."}</div>
-          </div>
-
-          <div style={{height:14}} />
-          <div className="grid2">
-            <div className="card">
-              <h3>Known assumptions</h3>
-              <div className="tags">{project.assumptions.map((item) => <span className="tag" key={item}>{item}</span>)}</div>
-            </div>
-            <div className="card">
-              <h3>Decision log</h3>
-              <p>{project.decisions.length ? project.decisions.join(" · ") : "No irreversible decisions yet. Evidence comes first."}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <aside className="panel">
-        <div className="panel-head"><b>Agents</b><span className="small muted">shared memory</span></div>
-        <div className="panel-body">
-          <div className="agent-actions">
-            {agents.map(([id, title, copy]) => (
-              <button className="agent-btn" key={id} onClick={() => run(id)} disabled={busy !== null}>
-                <b>{busy === id ? "Running…" : title}</b><span>{copy}</span>
-              </button>
-            ))}
-          </div>
-          <div style={{height:22}} />
-          <div className="small muted" style={{marginBottom:10}}>ACTIVITY</div>
-          <div className="timeline">
-            {project.runs.length === 0 ? <div className="muted small">No agent runs yet.</div> : project.runs.slice(0, 8).map((run) => (
-              <div className="event" key={run.id}>
-                <b>{run.agent} → {run.stage}</b>
-                <p>{new Date(run.createdAt).toLocaleString()} · {run.provider}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
+export function Workspace({initial,initialEvidence,initialJobs,initialBudget}:{initial:FounderProject;initialEvidence:EvidenceRecord[];initialJobs:Array<Record<string,unknown>>;initialBudget:BudgetStatus}){
+ const[project,setProject]=useState(initial);const[evidence,setEvidence]=useState(initialEvidence);const[jobs,setJobs]=useState(initialJobs);const[budget,setBudget]=useState(initialBudget);const[busy,setBusy]=useState<string|null>(null);const[claim,setClaim]=useState("");const[sourceUrl,setSourceUrl]=useState("");const[query,setQuery]=useState("");const[message,setMessage]=useState("");
+ async function run(agent:AgentName){setBusy(agent);setMessage("");try{const r=await fetch(`/api/projects/${project.id}/run`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({agent})});const data=await r.json();if(!r.ok)throw new Error(data.error||"Agent run failed");setProject(data.project);setBudget(data.budget)}catch(e){setMessage(e instanceof Error?e.message:"Agent run failed")}finally{setBusy(null)}}
+ async function addManual(){if(claim.trim().length<5)return;setBusy("evidence");const r=await fetch(`/api/projects/${project.id}/evidence`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({claim,sourceUrl:sourceUrl||null,sourceType:"manual",confidence:.65})});if(r.ok){const item=await r.json();setEvidence([item,...evidence]);setClaim("");setSourceUrl("");setMessage("Evidence saved with provenance hash.")}else setMessage("Could not save evidence");setBusy(null)}
+ async function research(payload:{url?:string;query?:string}){setBusy("research");const r=await fetch(`/api/projects/${project.id}/research`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();setMessage(r.ok?`Research job queued: ${data.jobId}`:(data.error||"Research queue failed"));if(r.ok)setJobs([{id:data.jobId,kind:data.kind,status:"queued",created_at:new Date().toISOString()},...jobs]);setBusy(null)}
+ const currentIndex=stages.indexOf(project.stage);
+ return <div className="workspace"><aside className="panel"><div className="panel-head"><b>Lifecycle</b><span className="small muted">Phase 1</span></div><ul className="stage-list">{stages.map((stage,index)=>{const status=index<currentIndex?"done":index===currentIndex?"active":"pending";return <li className={`stage ${status}`} key={stage}>{stage[0].toUpperCase()+stage.slice(1)}</li>})}</ul></aside><section className="panel"><div className="panel-head"><div><div className="small muted">PROJECT BRAIN</div><h2 className="project-title">{project.name}</h2></div><span className="pill">{project.stage}</span></div><div className="panel-body"><div className="grid2"><div className="card"><h3>Original idea</h3><p>{project.idea}</p></div><div className="card"><h3>AI budget</h3><div className="score">${budget.remainingTodayUsd.toFixed(2)}<small> left today</small></div><p>${budget.perRunBudgetUsd.toFixed(2)} max/run · ${budget.spentTodayUsd.toFixed(4)} spent</p></div></div><div style={{height:14}}/><div className="card"><h3>Evidence intelligence</h3><div className="grid2"><div><input value={claim} onChange={(e: { target: { value: string } })=>setClaim(e.target.value)} placeholder="Claim or observation"/><input value={sourceUrl} onChange={(e: { target: { value: string } })=>setSourceUrl(e.target.value)} placeholder="Optional source URL"/><button className="agent-btn" disabled={!!busy} onClick={addManual}>Save manual evidence</button></div><div><input value={query} onChange={(e: { target: { value: string } })=>setQuery(e.target.value)} placeholder="Research search query"/><button className="agent-btn" disabled={!!busy||!query} onClick={()=>research({query})}>Queue web search</button><button className="agent-btn" disabled={!!busy||!sourceUrl} onClick={()=>research({url:sourceUrl})}>Capture source URL</button></div></div><div style={{height:12}}/>{evidence.slice(0,8).map(item=><div className="event" key={item.id}><b>{item.title||item.sourceType} · {(item.confidence*100).toFixed(0)}%</b><p>{item.claim}{item.sourceUrl?` — ${item.sourceUrl}`:""}</p></div>)}{!evidence.length?<p>No captured evidence yet.</p>:null}</div><div style={{height:14}}/><div className="card"><h3>Latest intelligence</h3><div className="output">{project.latestOutput||"Run an agent after capturing evidence."}</div></div>{message?<div className="error small" style={{marginTop:12}}>{message}</div>:null}</div></section><aside className="panel"><div className="panel-head"><b>Agents</b><span className="small muted">grounded</span></div><div className="panel-body"><div className="agent-actions">{agents.map(([id,title,copy])=><button className="agent-btn" key={id} onClick={()=>run(id)} disabled={!!busy}><b>{busy===id?"Running…":title}</b><span>{copy}</span></button>)}</div><div style={{height:22}}/><div className="small muted">RESEARCH JOBS</div><div className="timeline">{jobs.slice(0,6).map((job,index)=><div className="event" key={String(job.id??index)}><b>{String(job.kind??"job")} · {String(job.status??"queued")}</b><p>{String(job.last_error??job.created_at??"")}</p></div>)}</div><div style={{height:22}}/><div className="small muted">AGENT ACTIVITY</div><div className="timeline">{project.runs.slice(0,6).map(run=><div className="event" key={run.id}><b>{run.agent} → {run.stage}</b><p>{run.provider} · ${(run.costUsd??0).toFixed(4)} · {run.latencyMs??0}ms</p></div>)}</div></div></aside></div>
 }
