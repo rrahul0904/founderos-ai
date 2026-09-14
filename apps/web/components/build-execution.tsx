@@ -1,118 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import type { BuildExecutionRecord, BuildPlanRecord } from "@founderos/core";
+import type { BuildExecutionRecord, BuildPlanRecord, PreviewVerificationRecord } from "@founderos/core";
 
 export function BuildExecution({ projectId, projectName, initialPlans }: { projectId: string; projectName: string; initialPlans: BuildPlanRecord[] }) {
-  const [repository, setRepository] = useState("");
-  const [objective, setObjective] = useState("");
-  const [plans, setPlans] = useState(initialPlans);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+  const [repository,setRepository]=useState(""); const [objective,setObjective]=useState(""); const [plans,setPlans]=useState(initialPlans); const [busy,setBusy]=useState<string|null>(null); const [message,setMessage]=useState("");
+  const [vercelTeamId,setVercelTeamId]=useState(""); const [vercelProjectId,setVercelProjectId]=useState("");
+  async function call(path:string,options:RequestInit={}){const response=await fetch(path,options);const data=await response.json().catch(()=>({})) as {error?:unknown}&Partial<BuildPlanRecord>;if(!response.ok)throw new Error(typeof data.error==="string"?data.error:`Request failed (${response.status})`);return data as BuildPlanRecord;}
+  function replace(plan:BuildPlanRecord){setPlans(current=>[plan,...current.filter(item=>item.id!==plan.id)]);}
+  async function createPlan(){setBusy("create");setMessage("");try{const plan=await call(`/api/projects/${projectId}/build`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({repository,objective:objective||undefined})});replace(plan);setMessage("Draft build plan created. Review it before approval.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to create plan");}finally{setBusy(null);}}
+  async function approve(planId:string){setBusy(planId);setMessage("");try{replace(await call(`/api/projects/${projectId}/build/${planId}/approve`,{method:"POST"}));setMessage("Plan approved. GitHub publication is now unlocked.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to approve plan");}finally{setBusy(null);}}
+  async function publish(planId:string){setBusy(planId);setMessage("");try{replace(await call(`/api/projects/${projectId}/build/${planId}/publish`,{method:"POST"}));setMessage("Branch and implementation issues published to GitHub.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to publish plan");}finally{setBusy(null);}}
+  async function execute(planId:string){setBusy(planId);setMessage("");try{const response=await fetch(`/api/projects/${projectId}/build/${planId}/execute`,{method:"POST"});const data=await response.json() as {error?:string;plan?:BuildPlanRecord;execution?:BuildExecutionRecord};if(!response.ok||!data.plan)throw new Error(data.error||"Unable to queue sandbox execution");replace(data.plan);setMessage(`Sandbox execution ${data.execution?.status??"queued"}.`);}catch(error){setMessage(error instanceof Error?error.message:"Unable to queue sandbox execution");}finally{setBusy(null);}}
+  async function refreshExecution(planId:string){setBusy(planId);setMessage("");try{const response=await fetch(`/api/projects/${projectId}/build/${planId}/execute`);const data=await response.json() as {error?:string;plan?:BuildPlanRecord;execution?:BuildExecutionRecord|null};if(!response.ok||!data.plan)throw new Error(data.error||"Unable to refresh execution");replace(data.plan);setMessage(data.execution?`Execution status: ${data.execution.status}${data.execution.lastError?` — ${data.execution.lastError}`:""}`:"No durable execution found yet.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to refresh execution");}finally{setBusy(null);}}
+  async function openPullRequest(planId:string){setBusy(planId);setMessage("");try{replace(await call(`/api/projects/${projectId}/build/${planId}/pull-request`,{method:"POST"}));setMessage("Draft pull request opened or reused.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to open pull request");}finally{setBusy(null);}}
+  async function discoverPreview(planId:string,savedTeamId?:string,savedProjectId?:string){setBusy(planId);setMessage("");try{const teamId=vercelTeamId.trim()||savedTeamId||"";const targetProjectId=vercelProjectId.trim()||savedProjectId||"";if(!teamId||!targetProjectId)throw new Error("Enter the Vercel team and project IDs first");const response=await fetch(`/api/projects/${projectId}/build/${planId}/preview`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({teamId,projectId:targetProjectId})});const data=await response.json() as {error?:string;plan?:BuildPlanRecord;verification?:PreviewVerificationRecord|null};if(!data.plan)throw new Error(data.error||"Unable to discover preview");replace(data.plan);if(!response.ok&&response.status!==202)throw new Error(data.error||"Preview verification blocked");setMessage(data.plan.preview?.deployment?`Vercel preview ${data.plan.preview.deployment.state}; browser verification ${data.verification?.status??data.plan.preview.verificationStatus??"not queued"}.`:"Exact-commit Vercel preview not available yet.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to discover preview");}finally{setBusy(null);}}
+  async function refreshPreview(planId:string){setBusy(planId);setMessage("");try{const response=await fetch(`/api/projects/${projectId}/build/${planId}/preview`);const data=await response.json() as {error?:string;plan?:BuildPlanRecord;verification?:PreviewVerificationRecord|null};if(!response.ok||!data.plan)throw new Error(data.error||"Unable to refresh preview verification");replace(data.plan);setMessage(data.verification?`Browser verification: ${data.verification.status}${data.verification.lastError?` — ${data.verification.lastError}`:""}`:"No browser verification queued yet.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to refresh preview verification");}finally{setBusy(null);}}
+  async function copyWorkOrder(planId:string){setBusy(planId);setMessage("");try{const response=await fetch(`/api/projects/${projectId}/build/${planId}/work-order`);if(!response.ok)throw new Error("Unable to generate work order");await navigator.clipboard.writeText(await response.text());setMessage("Work order copied to clipboard.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to copy work order");}finally{setBusy(null);}}
 
-  async function call(path: string, options: RequestInit = {}) {
-    const response = await fetch(path, options);
-    const data = await response.json().catch(() => ({})) as { error?: unknown } & Partial<BuildPlanRecord>;
-    if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Request failed (${response.status})`);
-    return data as BuildPlanRecord;
-  }
-
-  function replace(plan: BuildPlanRecord) {
-    setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
-  }
-
-  async function createPlan() {
-    setBusy("create"); setMessage("");
-    try {
-      const plan = await call(`/api/projects/${projectId}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repository, objective: objective || undefined }) });
-      replace(plan); setMessage("Draft build plan created. Review it before approval.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create plan"); }
-    finally { setBusy(null); }
-  }
-
-  async function approve(planId: string) {
-    setBusy(planId); setMessage("");
-    try { replace(await call(`/api/projects/${projectId}/build/${planId}/approve`, { method: "POST" })); setMessage("Plan approved. GitHub publication is now unlocked."); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Unable to approve plan"); }
-    finally { setBusy(null); }
-  }
-
-  async function publish(planId: string) {
-    setBusy(planId); setMessage("");
-    try { replace(await call(`/api/projects/${projectId}/build/${planId}/publish`, { method: "POST" })); setMessage("Branch and implementation issues published to GitHub."); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Unable to publish plan"); }
-    finally { setBusy(null); }
-  }
-
-  async function execute(planId: string) {
-    setBusy(planId); setMessage("");
-    try {
-      const response = await fetch(`/api/projects/${projectId}/build/${planId}/execute`, { method: "POST" });
-      const data = await response.json() as { error?: string; plan?: BuildPlanRecord; execution?: BuildExecutionRecord };
-      if (!response.ok || !data.plan) throw new Error(data.error || "Unable to queue sandbox execution");
-      replace(data.plan); setMessage(`Sandbox execution ${data.execution?.status ?? "queued"}.`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to queue sandbox execution"); }
-    finally { setBusy(null); }
-  }
-
-  async function refreshExecution(planId: string) {
-    setBusy(planId); setMessage("");
-    try {
-      const response = await fetch(`/api/projects/${projectId}/build/${planId}/execute`);
-      const data = await response.json() as { error?: string; plan?: BuildPlanRecord; execution?: BuildExecutionRecord | null };
-      if (!response.ok || !data.plan) throw new Error(data.error || "Unable to refresh execution");
-      replace(data.plan);
-      setMessage(data.execution ? `Execution status: ${data.execution.status}${data.execution.lastError ? ` — ${data.execution.lastError}` : ""}` : "No durable execution found yet.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to refresh execution"); }
-    finally { setBusy(null); }
-  }
-
-  async function openPullRequest(planId: string) {
-    setBusy(planId); setMessage("");
-    try { replace(await call(`/api/projects/${projectId}/build/${planId}/pull-request`, { method: "POST" })); setMessage("Draft pull request opened or reused."); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Unable to open pull request"); }
-    finally { setBusy(null); }
-  }
-
-  async function copyWorkOrder(planId: string) {
-    setBusy(planId); setMessage("");
-    try {
-      const response = await fetch(`/api/projects/${projectId}/build/${planId}/work-order`);
-      if (!response.ok) throw new Error("Unable to generate work order");
-      await navigator.clipboard.writeText(await response.text()); setMessage("Work order copied to clipboard.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to copy work order"); }
-    finally { setBusy(null); }
-  }
-
-  return <div className="container" style={{ paddingTop: 28 }}>
-    <div className="card">
-      <div className="small muted">PHASE 2 · BUILD EXECUTION</div><h2>{projectName}</h2>
-      <p>Convert an evidence-backed project into an approval-gated GitHub delivery plan. FounderOS creates a dedicated branch and implementation issues; sandbox execution is opt-in and only pushes code after isolated verification passes.</p>
-      <div className="grid2">
-        <div><div className="small muted">TARGET REPOSITORY</div><input value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/repository" /></div>
-        <div><div className="small muted">OBJECTIVE (OPTIONAL)</div><input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Use the project objective by default" /></div>
-      </div>
-      <button className="agent-btn" disabled={busy !== null || !repository.trim()} onClick={createPlan}><b>{busy === "create" ? "Creating…" : "Create draft build plan"}</b><span>Generate scoped tasks, acceptance criteria, risk, branch name, and release evidence.</span></button>
-      {message ? <div className="small" style={{ marginTop: 12 }}>{message}</div> : null}
-    </div>
-    <div style={{ height: 14 }} />
-    {plans.length === 0 ? <div className="card"><h3>No build plans yet</h3><p>Create one when product scope and architecture are ready to hand off to implementation.</p></div> : null}
-    {plans.map((plan) => <div className="card" key={plan.id} style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}><div><div className="small muted">{plan.repository} · {plan.baseBranch} → {plan.branchName}</div><h3>{plan.objective}</h3></div><span className="pill">{plan.status}</span></div>
-      {plan.lastError ? <div className="error small">Last blocker: {plan.lastError}</div> : null}
-      {plan.verification ? <p>Verification: <b>{plan.verification.status}</b> · {plan.verification.summary}</p> : null}
-      {plan.executionCommit ? <p>Verified commit: <code>{plan.executionCommit}</code></p> : null}
-      {plan.releaseEvidence ? <p>Release evidence SHA-256: <code>{plan.releaseEvidence.digestSha256}</code></p> : null}
-      {plan.pullRequest ? <p><a href={plan.pullRequest.url} target="_blank" rel="noreferrer">Draft pull request #{plan.pullRequest.number}</a></p> : null}
-      <div className="timeline" style={{ marginTop: 14 }}>{[...plan.tasks].sort((a, b) => a.order - b.order).map((task) => <div className="event" key={task.id}><b>{task.order}. {task.title} · {task.risk}</b><p>{task.description}</p>{task.githubIssue ? <p><a href={task.githubIssue.url} target="_blank" rel="noreferrer">GitHub issue #{task.githubIssue.number}</a></p> : null}</div>)}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
-        {plan.status === "draft" || (plan.status === "blocked" && !plan.approvedAt) ? <button className="agent-btn" disabled={busy !== null} onClick={() => approve(plan.id)}><b>Approve plan</b><span>Human gate before external GitHub writes.</span></button> : null}
-        {plan.approvedAt && ["approved", "publishing", "blocked"].includes(plan.status) ? <button className="agent-btn" disabled={busy !== null} onClick={() => publish(plan.id)}><b>{busy === plan.id ? "Publishing…" : "Publish to GitHub"}</b><span>Create/resume branch and implementation issues idempotently.</span></button> : null}
-        {["published", "pr_open"].includes(plan.status) && !plan.executionCommit ? <button className="agent-btn" disabled={busy !== null} onClick={() => execute(plan.id)}><b>{busy === plan.id ? "Queuing…" : plan.executionId ? "Retry sandbox build" : "Run sandbox build"}</b><span>Generate code, verify it in isolation, then push only if green.</span></button> : null}
-        {plan.executionId && (!plan.executionCommit || !plan.releaseEvidence) ? <button className="agent-btn" disabled={busy !== null} onClick={() => refreshExecution(plan.id)}><b>Refresh execution</b><span>Read worker status and persist release evidence after success.</span></button> : null}
-        {plan.status === "published" && plan.executionCommit && !plan.pullRequest ? <button className="agent-btn" disabled={busy !== null} onClick={() => openPullRequest(plan.id)}><b>{busy === plan.id ? "Opening PR…" : "Open draft PR"}</b><span>Create/reuse the review boundary after verified code exists.</span></button> : null}
-        <button className="agent-btn" disabled={busy !== null} onClick={() => copyWorkOrder(plan.id)}><b>Copy work order</b><span>Portable implementation context for a coding agent or operator.</span></button>
-      </div>
-    </div>)}
+  return <div className="container" style={{paddingTop:28}}><div className="card"><div className="small muted">PHASE 2 · BUILD → PREVIEW</div><h2>{projectName}</h2><p>Guarded implementation now continues through exact-commit preview discovery and isolated browser verification. Provider credentials stay server-side.</p><div className="grid2"><div><div className="small muted">TARGET REPOSITORY</div><input value={repository} onChange={e=>setRepository(e.target.value)} placeholder="owner/repository"/></div><div><div className="small muted">OBJECTIVE (OPTIONAL)</div><input value={objective} onChange={e=>setObjective(e.target.value)} placeholder="Use the project objective by default"/></div></div><button className="agent-btn" disabled={busy!==null||!repository.trim()} onClick={createPlan}><b>{busy==="create"?"Creating…":"Create draft build plan"}</b><span>Generate implementation tasks and guardrails.</span></button>{message?<div className="small" style={{marginTop:12}}>{message}</div>:null}</div><div style={{height:14}}/>
+  {plans.length===0?<div className="card"><h3>No build plans yet</h3><p>Create one when product scope and architecture are ready.</p></div>:null}
+  {plans.map(plan=><div className="card" key={plan.id} style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><div className="small muted">{plan.repository} · {plan.baseBranch} → {plan.branchName}</div><h3>{plan.objective}</h3></div><span className="pill">{plan.status}</span></div>{plan.lastError?<div className="error small">Last blocker: {plan.lastError}</div>:null}{plan.verification?<p>Build verification: <b>{plan.verification.status}</b> · {plan.verification.summary}</p>:null}{plan.executionCommit?<p>Verified commit: <code>{plan.executionCommit}</code></p>:null}{plan.releaseEvidence?<p>Release evidence SHA-256: <code>{plan.releaseEvidence.digestSha256}</code></p>:null}{plan.pullRequest?<p><a href={plan.pullRequest.url} target="_blank" rel="noreferrer">Draft pull request #{plan.pullRequest.number}</a></p>:null}
+  {plan.preview?.deployment?<div className="event"><b>Vercel preview · {plan.preview.deployment.state}</b><p><a href={plan.preview.deployment.url} target="_blank" rel="noreferrer">{plan.preview.deployment.url}</a> · commit {plan.preview.deployment.commitSha.slice(0,12)}</p><p>Browser verification: {plan.preview.verificationStatus??"not queued"}{plan.preview.browserReport?` · HTTP ${plan.preview.browserReport.statusCode} · ${plan.preview.browserReport.bodyTextLength} visible chars`:""}</p></div>:null}
+  <div className="timeline" style={{marginTop:14}}>{[...plan.tasks].sort((a,b)=>a.order-b.order).map(task=><div className="event" key={task.id}><b>{task.order}. {task.title} · {task.risk}</b><p>{task.description}</p>{task.githubIssue?<p><a href={task.githubIssue.url} target="_blank" rel="noreferrer">GitHub issue #{task.githubIssue.number}</a></p>:null}</div>)}</div>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>{plan.status==="draft"||(plan.status==="blocked"&&!plan.approvedAt)?<button className="agent-btn" disabled={busy!==null} onClick={()=>approve(plan.id)}><b>Approve plan</b><span>Human gate before GitHub writes.</span></button>:null}{plan.approvedAt&&["approved","publishing","blocked"].includes(plan.status)?<button className="agent-btn" disabled={busy!==null} onClick={()=>publish(plan.id)}><b>Publish to GitHub</b><span>Create/resume branch and issues.</span></button>:null}{["published","pr_open"].includes(plan.status)&&!plan.executionCommit?<button className="agent-btn" disabled={busy!==null} onClick={()=>execute(plan.id)}><b>{plan.executionId?"Retry sandbox build":"Run sandbox build"}</b><span>Push only after isolated verification.</span></button>:null}{plan.executionId&&(!plan.executionCommit||!plan.releaseEvidence)?<button className="agent-btn" disabled={busy!==null} onClick={()=>refreshExecution(plan.id)}><b>Refresh execution</b><span>Read durable executor state.</span></button>:null}{plan.status==="published"&&plan.executionCommit&&!plan.pullRequest?<button className="agent-btn" disabled={busy!==null} onClick={()=>openPullRequest(plan.id)}><b>Open draft PR</b><span>Create/reuse review boundary.</span></button>:null}<button className="agent-btn" disabled={busy!==null} onClick={()=>copyWorkOrder(plan.id)}><b>Copy work order</b><span>Portable implementation context.</span></button></div>
+  {plan.releaseEvidence?<div style={{marginTop:14}}><div className="small muted">VERCEL PREVIEW BINDING</div>{plan.preview?<p className="small muted">Saved: {plan.preview.teamId} · {plan.preview.projectId}</p>:null}<div className="grid2"><input value={vercelTeamId} onChange={e=>setVercelTeamId(e.target.value)} placeholder={plan.preview?.teamId??"team_..."}/><input value={vercelProjectId} onChange={e=>setVercelProjectId(e.target.value)} placeholder={plan.preview?.projectId??"prj_..."}/></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="agent-btn" disabled={busy!==null||!(vercelTeamId.trim()||plan.preview?.teamId)||!(vercelProjectId.trim()||plan.preview?.projectId)} onClick={()=>void discoverPreview(plan.id,plan.preview?.teamId,plan.preview?.projectId)}><b>Discover exact preview</b><span>Require matching commit SHA + guarded branch.</span></button>{plan.preview?.verificationId?<button className="agent-btn" disabled={busy!==null} onClick={()=>refreshPreview(plan.id)}><b>Refresh browser verification</b><span>Read rendered-page verification state.</span></button>:null}</div></div>:null}</div>)}
   </div>;
 }

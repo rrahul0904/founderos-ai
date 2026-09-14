@@ -13,28 +13,21 @@
 ## Phase 1 — evidence intelligence — substantially implemented
 - ✅ organization-scoped data boundary
 - ✅ shared-key production authentication mode
-- ✅ PostgreSQL repository in the web request path
-- ✅ evidence/source APIs and URL/search research worker
-- ✅ source snapshots + provenance hashes
-- ✅ claim/evidence graph and confidence scoring
-- ✅ daily/per-run budget enforcement and audit events
+- ✅ evidence/source APIs, provenance, claim graph, research worker
+- ✅ grounded agents, budgets, persistence and audit events
 - ⏳ full multi-user signup/SSO/RBAC
 - ⏳ production egress proxy/network policy
 
-## Phase 2 — build execution — guarded Node executor implemented
-- ✅ GitHub repository connection with server-side token + deny-by-default allowlist
-- ✅ implementation-plan-to-task/issue generation
-- ✅ human approval before GitHub writes
-- ✅ dedicated branch creation and resumable issue publication
-- ✅ durable build execution queue separate from research jobs
-- ✅ opt-in Node.js coding worker with constrained model patch protocol
-- ✅ container sandbox verification before commit/push
-- ✅ deterministic SHA-256 release-evidence integrity manifest
-- ✅ draft pull-request open/reuse after verified branch code exists
-- ⏳ release-evidence signing + artifact retention
-- ⏳ additional language/package-manager executors
-- ⏳ production microVM/remote-sandbox isolation
-- ⏳ preview deployment adapters + browser verification
+## Phase 2 — build execution + preview verification
+- ✅ approval-gated GitHub branch/issue/PR delivery
+- ✅ durable opt-in Node coding executor and isolated verification
+- ✅ deterministic SHA-256 release-evidence manifest
+- ✅ Vercel exact-commit preview discovery
+- ✅ durable isolated Playwright browser verification with SSRF-oriented request policy
+- ⏳ production promotion adapter and approval gate
+- ⏳ additional deployment providers
+- ⏳ production microVM/remote coding sandbox isolation + disk quotas
+- ⏳ release-evidence signing/artifact retention
 
 ## Phase 3 — production learning loop
 - client telemetry SDK
