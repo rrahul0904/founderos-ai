@@ -1,7 +1,6 @@
 # Roadmap
 
 ## Phase 0 — foundation ✅
-
 - product brain/domain model
 - usable web workspace
 - validation/product/architecture/learning agents
@@ -12,36 +11,31 @@
 - Docker + CI + tests
 
 ## Phase 1 — evidence intelligence — substantially implemented
-
 - ✅ organization-scoped data boundary
 - ✅ shared-key production authentication mode
 - ✅ PostgreSQL repository in the web request path
-- ✅ evidence/source APIs
-- ✅ URL capture worker with retries and SSRF controls
-- ✅ optional web-search adapter (Tavily)
+- ✅ evidence/source APIs and URL/search research worker
 - ✅ source snapshots + provenance hashes
 - ✅ claim/evidence graph and confidence scoring
-- ✅ daily and per-run budget enforcement
-- ✅ full agent-run persistence and audit events
+- ✅ daily/per-run budget enforcement and audit events
 - ⏳ full multi-user signup/SSO/RBAC
 - ⏳ production egress proxy/network policy
 
-## Phase 2 — build execution — delivery control plane implemented
-
+## Phase 2 — build execution — guarded Node executor implemented
 - ✅ GitHub repository connection with server-side token + deny-by-default allowlist
 - ✅ implementation-plan-to-task/issue generation
-- ✅ explicit human approval before GitHub writes
-- ✅ dedicated branch creation with idempotent retry
-- ✅ resumable issue publication and portable work-order export
-- ✅ draft pull-request open/reuse after branch code exists
-- ✅ project lifecycle/audit state for build publication
-- ⏳ isolated/sandboxed coding agent executor
-- ⏳ repository checkout, generated patches, and code commits
-- ⏳ branch verification and release-evidence manifest
+- ✅ human approval before GitHub writes
+- ✅ dedicated branch creation and resumable issue publication
+- ✅ durable build execution queue separate from research jobs
+- ✅ opt-in Node.js coding worker with constrained model patch protocol
+- ✅ container sandbox verification before commit/push
+- ✅ draft pull-request open/reuse after verified branch code exists
+- ⏳ additional language/package-manager executors
+- ⏳ production microVM/remote-sandbox isolation
+- ⏳ signed release-evidence manifests
 - ⏳ preview deployment adapters + browser verification
 
 ## Phase 3 — production learning loop
-
 - client telemetry SDK
 - errors, funnels, feedback and billing signals
 - experiment registry
@@ -49,7 +43,6 @@
 - production incident → context → diagnosis → guarded fix PR
 
 ## Phase 4 — platform
-
 - MCP/tool registry
 - reusable agent skills
 - enterprise SSO/RBAC/governance and policy engine

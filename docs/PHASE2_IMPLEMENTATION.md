@@ -1,44 +1,60 @@
 # Phase 2 implementation status
 
-## Implemented in this slice
+## Implemented
 
 - Build plans are durable project-brain artifacts stored with the project payload.
-- Product/architecture context is converted into six ordered implementation tasks with acceptance criteria and explicit risk.
-- A human approval gate is required before any external GitHub mutation.
+- Product/architecture context becomes ordered implementation tasks with acceptance criteria and explicit risk.
+- Human approval is required before external GitHub mutation.
 - GitHub delivery uses a server-side token and deny-by-default repository allowlist.
-- Target repositories are verified before publication.
 - FounderOS creates a dedicated `founderos/*` branch and never writes directly to the configured base branch.
-- Branch creation is retry-safe when the branch already exists.
-- Implementation issues use deterministic plan/task titles and are looked up before creation so publication can resume without intentionally duplicating issues.
+- Branch, issue, and draft-PR creation are retry-aware/idempotent.
 - Partial publication state is persisted after every GitHub issue.
-- Build plans expose a portable Markdown work order for a coding agent or human operator.
-- After code exists on the guarded branch, FounderOS can open or reuse a draft pull request; GitHub's no-diff/permission response remains an explicit blocker rather than being hidden.
-- Build publication advances the project lifecycle to `build` and emits audit events in PostgreSQL mode.
-- Tests cover build-plan generation/approval, repository allowlisting, issue reuse, branch idempotency, and PR reuse.
+- Build plans expose portable Markdown work orders.
+- Durable build executions use a separate `build_executions` queue; research workers cannot claim coding work.
+- The coding worker re-enforces the repository allowlist and requires explicit `BUILD_EXECUTOR_ENABLED=true`.
+- Repository/work-order text is treated as untrusted model input.
+- Generated changes are constrained by file-count, byte, traversal, symlink, secret-path, generated-output, and CI-workflow restrictions.
+- The first sandbox strategy supports root Node.js projects.
+- Dependency installation happens in a container without FounderOS/GitHub/OpenAI secrets; verification runs with network disabled, dropped Linux capabilities, no-new-privileges, CPU/memory/PID limits, and an isolated node_modules volume.
+- Code is committed and pushed to the guarded branch only after sandbox verification passes.
+- After verified code exists, FounderOS can open or reuse a draft pull request.
+- Build execution success/failure and GitHub actions emit audit records in PostgreSQL mode.
 
-## Required external configuration
+## Required configuration
 
-GitHub publication requires:
+GitHub publication:
 
 ```bash
 GITHUB_TOKEN='fine-grained-token'
 FOUNDEROS_GITHUB_ALLOWED_REPOS='owner/repository,owner/another-repository'
 ```
 
-The token must be able to read repository metadata and create branches, issues, and pull requests in each allowlisted repository. Keep the token server-side. `FOUNDEROS_GITHUB_ALLOW_ANY_REPO=true` exists only as an explicit development escape hatch and is not the recommended production setting.
+Sandbox execution additionally requires PostgreSQL, OpenAI, Docker, and an explicit enable switch:
 
-## Blockers converted into explicit product state
+```bash
+DATABASE_URL='postgres://...'
+OPENAI_API_KEY='...'
+BUILD_EXECUTOR_ENABLED=true
+```
 
-Missing/invalid GitHub credentials, an unallowlisted repository, insufficient permissions, a missing base branch, a branch with no code diff, or a GitHub API failure does not get represented as success. The build plan preserves the concrete external error and can be retried after the dependency is fixed.
+For local development the opt-in Compose profile is:
 
-## Deliberately not claimed complete
+```bash
+docker compose --profile build-executor up --build
+```
 
-This slice is the build **delivery control plane**, not an arbitrary-code executor. The following remain follow-on work:
+The local profile mounts the Docker socket into the trusted build-worker container. Generated repository code does **not** receive that socket or any FounderOS/provider credentials. Production should run the build worker on a dedicated executor host or isolated container-runtime service rather than sharing the application host daemon.
 
-- isolated/sandboxed coding-agent execution
-- repository checkout, patch generation, and generated code commits
-- branch test execution and signed release-evidence manifests
+## Explicit blocker behavior
+
+Missing credentials, unallowlisted repositories, insufficient GitHub permissions, missing branches, unsupported repositories, invalid model patches, blocked paths, sandbox install/test/build failures, and no-diff PR attempts are represented as failures/blockers. FounderOS does not mark those operations successful.
+
+## Still pending
+
+- additional language/package-manager sandbox strategies beyond root Node.js
+- stronger production executor isolation such as microVM/firecracker-class boundaries or a dedicated remote sandbox provider
+- signed release-evidence manifests and artifact retention
 - preview deployment adapters and browser verification
-- production secret manager integration
+- managed secret-store integration
 
-Those capabilities should build on the approval, allowlist, audit, idempotency, branch, and draft-PR boundaries introduced here rather than bypassing them.
+The executor is intentionally opt-in until those production isolation controls are chosen for a deployment environment.
