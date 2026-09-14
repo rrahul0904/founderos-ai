@@ -25,6 +25,18 @@ test("creates issue through a server-side GitHub adapter", async () => {
   assert.equal(calls[0].init?.method, "POST");
 });
 
+test("reuses an existing generated issue before creating a duplicate", async () => {
+  let postCalls = 0;
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") postCalls += 1;
+    return jsonResponse([{ number: 9, html_url: "https://github.com/acme/widget/issues/9", title: "[FounderOS abcd1234] 1. Contract" }]);
+  }) as typeof fetch;
+  const client = new GitHubDeliveryClient({ token: "secret", allowedRepositories: ["acme/widget"], fetcher });
+  const issue = await client.ensureIssue("acme/widget", "[FounderOS abcd1234] 1. Contract", "body");
+  assert.equal(issue.number, 9);
+  assert.equal(postCalls, 0);
+});
+
 test("branch creation is idempotent when GitHub reports an existing ref", async () => {
   let createCalls = 0;
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {

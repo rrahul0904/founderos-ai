@@ -110,6 +110,19 @@ export class GitHubDeliveryClient {
     return { number: data.number, url: data.html_url };
   }
 
+  async ensureIssue(repository: string, title: string, body: string): Promise<GitHubIssueResult> {
+    const canonical = this.assertAllowed(repository);
+    const expectedTitle = title.slice(0, 240);
+    for (let page = 1; page <= 3; page += 1) {
+      const response = await this.request(`/repos/${canonical}/issues?state=all&per_page=100&page=${page}`);
+      const issues = await response.json() as Array<{ number?: number; html_url?: string; title?: string; pull_request?: unknown }>;
+      const match = issues.find((item) => !item.pull_request && item.title === expectedTitle && item.number && item.html_url);
+      if (match?.number && match.html_url) return { number: match.number, url: match.html_url };
+      if (issues.length < 100) break;
+    }
+    return this.createIssue(canonical, expectedTitle, body);
+  }
+
   private async getBranch(repository: string, branchName: string) {
     const canonical = this.assertAllowed(repository);
     const response = await this.request(`/repos/${canonical}/git/ref/heads/${encodeRef(branchName)}`);

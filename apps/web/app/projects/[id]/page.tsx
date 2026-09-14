@@ -20,7 +20,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     <main className="shell">
       <header className="topbar">
         <a href="/" className="brand"><div className="logo">F</div> FounderOS</a>
-        <div className="pill">Idea → evidence → product → learning</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <a className="pill" href={`/projects/${id}/build`}>Build execution</a>
+          <div className="pill">Idea → evidence → product → learning</div>
+        </div>
       </header>
       <Workspace initial={project} initialEvidence={evidence} initialJobs={jobs} initialBudget={budget} />
     </main>
