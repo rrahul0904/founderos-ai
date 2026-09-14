@@ -2,61 +2,39 @@
 
 ## Implemented
 
-- Build plans are durable project-brain artifacts stored with the project payload.
-- Product/architecture context becomes ordered implementation tasks with acceptance criteria and explicit risk.
-- Human approval is required before external GitHub mutation.
-- GitHub delivery uses a server-side token and deny-by-default repository allowlist.
-- FounderOS creates a dedicated `founderos/*` branch and never writes directly to the configured base branch.
-- Branch, issue, and draft-PR creation are retry-aware/idempotent.
-- Partial publication state is persisted after every GitHub issue.
-- Build plans expose portable Markdown work orders.
-- Durable build executions use a separate `build_executions` queue; research workers cannot claim coding work.
-- The coding worker re-enforces the repository allowlist and requires explicit `BUILD_EXECUTOR_ENABLED=true`.
-- Repository/work-order text is treated as untrusted model input.
-- Generated changes are constrained by file-count, byte, traversal, symlink, secret-path, generated-output, and CI-workflow restrictions.
-- The first sandbox strategy supports root Node.js projects.
-- Dependency installation happens in a container without FounderOS/GitHub/OpenAI secrets; verification runs with network disabled, dropped Linux capabilities, no-new-privileges, CPU/memory/PID limits, and an isolated node_modules volume.
-- Verification runs on a disposable copy, so test/build scripts cannot mutate the checkout that is later committed.
-- Code is committed and pushed to the guarded branch only after sandbox verification passes.
-- Successful executions produce a deterministic SHA-256 release-evidence manifest binding execution, plan, repository/branches, verified commit, model, changed files, verification command, and completion time.
-- After verified code exists, FounderOS can open or reuse a draft pull request.
-- Build execution success/failure, release evidence, and GitHub actions emit audit records in PostgreSQL mode.
+- Durable project build plans, human approval, allowlisted GitHub branch/issue delivery, and draft PR handoff.
+- Separate durable build-execution queue and opt-in sandboxed Node coding worker.
+- Generated patches are path/size bounded; protected, credential, workflow, generated-output and symlink paths are blocked.
+- Dependency install and verification run without FounderOS/GitHub/OpenAI credentials; verification uses a disposable checkout copy and no network.
+- Verified code is pushed only after sandbox checks pass.
+- Deterministic SHA-256 release-evidence manifests bind the verified commit and execution evidence.
+- Vercel preview discovery requires explicit team/project binding and an exact match on the verified Git commit SHA and guarded branch; production deployments are never accepted as previews.
+- Browser verification uses a separate durable queue and Playwright worker. The entry URL must be HTTPS `*.vercel.app`; every browser request is checked against DNS/private-address rules.
+- Browser reports capture HTTP status, final URL, title, visible-body length, console errors, uncaught page errors, timestamp, and a screenshot SHA-256 in the durable report.
+- Browser pass requires a 2xx/3xx response, visible rendered content, no uncaught page errors, and no redirect outside `vercel.app`.
 
 ## Required configuration
 
-GitHub publication:
+GitHub delivery requires `GITHUB_TOKEN` + `FOUNDEROS_GITHUB_ALLOWED_REPOS`. Sandbox execution requires PostgreSQL, OpenAI, Docker, and `BUILD_EXECUTOR_ENABLED=true`.
 
+Vercel preview discovery requires:
 ```bash
-GITHUB_TOKEN='fine-grained-token'
-FOUNDEROS_GITHUB_ALLOWED_REPOS='owner/repository,owner/another-repository'
+VERCEL_TOKEN='server-side-vercel-token'
 ```
 
-Sandbox execution additionally requires PostgreSQL, OpenAI, Docker, and an explicit enable switch:
-
+Browser verification requires PostgreSQL and the opt-in worker:
 ```bash
-DATABASE_URL='postgres://...'
-OPENAI_API_KEY='...'
-BUILD_EXECUTOR_ENABLED=true
+PREVIEW_VERIFY_ENABLED=true
+docker compose --profile preview-verifier up --build
 ```
 
-For local development the opt-in Compose profile is:
-
-```bash
-docker compose --profile build-executor up --build
-```
-
-The local profile mounts the Docker socket into the trusted build-worker container. Generated repository code does **not** receive that socket or any FounderOS/provider credentials. Production should run the build worker on a dedicated executor host or isolated container-runtime service rather than sharing the application host daemon.
-
-## Explicit blocker behavior
-
-Missing credentials, unallowlisted repositories, insufficient GitHub permissions, missing branches, unsupported repositories, invalid model patches, blocked paths, sandbox install/test/build failures, and no-diff PR attempts are represented as failures/blockers. FounderOS does not mark those operations successful.
+The target Vercel project must already exist and be connected to the repository/branch workflow that produces previews. FounderOS deliberately does not silently create or bind arbitrary Vercel projects.
 
 ## Still pending
 
-- additional language/package-manager sandbox strategies beyond root Node.js
-- stronger production executor isolation such as microVM/firecracker-class boundaries or a dedicated remote sandbox provider
-- cryptographic signing/key management and artifact retention for the release-evidence manifest
-- preview deployment adapters and browser verification
-- production secret-manager integration
-
-The executor is intentionally opt-in until those production isolation controls are chosen for a deployment environment.
+- Production promotion adapter / approval policy after preview verification.
+- Preview verification for providers other than Vercel.
+- Production microVM/remote coding sandbox isolation and executor disk quotas.
+- Additional language/package-manager coding executors.
+- Cryptographic signing + artifact retention for release evidence.
+- Managed secret-store integration.

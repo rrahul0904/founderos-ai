@@ -2,28 +2,22 @@
 
 ## Implemented controls
 
-1. Organization ID is enforced in project/evidence/job/budget/audit/build-execution boundaries.
-2. Production can use `AUTH_MODE=shared-key`; dev auth refuses production unless `ALLOW_DEV_AUTH=true` is explicitly set.
-3. Provider/API secrets remain server-side.
-4. Research URL capture accepts only HTTP(S), rejects local/private destinations after DNS resolution, validates redirects, and limits content type/size/time.
-5. Captured sources receive SHA-256 hashes and source snapshots.
-6. Retrieved external content and repository content are treated as untrusted data, not tool-permission instructions.
-7. Research and build executions use separate durable queues and worker processes.
-8. Agent spend has daily/per-run controls and run-level usage/cost telemetry.
-9. Privileged product/research/build actions emit audit events in PostgreSQL mode.
-10. GitHub delivery and build execution keep tokens server-side and deny repositories outside `FOUNDEROS_GITHUB_ALLOWED_REPOS` unless an explicit development escape hatch is enabled.
-11. External GitHub writes require an approved build plan and target a dedicated `founderos/*` branch rather than the base branch.
-12. Generated code cannot modify `.git`, GitHub workflow files, `.env`/credential/secret paths, dependency output, or generated build-output paths through the executor patch interface.
-13. Patch paths are traversal checked and both parent/target symlinks are rejected before writes; recursive directory deletion is blocked.
-14. Verification runs against a disposable copy of the generated worktree, so repository test/build scripts cannot mutate the checkout that will later be committed.
-15. Generated code receives no GitHub/OpenAI/FounderOS credentials. Verification has network disabled, Linux capabilities dropped, no-new-privileges, CPU/memory/PID limits, and an isolated dependency volume.
-16. A commit is pushed only after sandbox verification succeeds; failed executions remain explicit and auditable.
+1. Organization ID is enforced across project/evidence/jobs/budgets/audit/build/preview queues.
+2. Provider/API secrets remain server-side; Vercel token is never persisted into build-plan state.
+3. Retrieved pages and repository content are untrusted data, not tool-permission instructions.
+4. Research, code execution, and preview browser verification use separate durable queues and worker processes.
+5. GitHub build delivery is deny-by-default repository allowlisted and branch-only before review.
+6. Coding patches block traversal, protected/sensitive paths, symlinks, recursive directory deletion, generated output, and GitHub workflows.
+7. Coding verification runs against a disposable copy with no provider credentials; test/build verification has network disabled.
+8. Vercel preview discovery requires exact verified commit SHA + guarded branch metadata and rejects `target=production`.
+9. Preview browser verification accepts only HTTPS `*.vercel.app` entry URLs. Every requested host is DNS-resolved and private/local IP destinations are blocked before the request continues.
+10. Browser verification fails redirects outside `vercel.app`, HTTP errors, empty rendered pages, and uncaught page errors. A screenshot digest is retained as evidence without persisting the screenshot bytes.
+11. Privileged build/preview actions emit PostgreSQL audit events.
 
 ## Production hardening still required
 
-- Put research workers behind an outbound proxy/network policy to close DNS-rebinding/egress edge cases at the infrastructure layer.
+- Enforce infrastructure-level egress policy in addition to application DNS/IP checks for research and browser workers.
 - Replace shared-key auth with SSO/OIDC before collaborative public SaaS use.
-- Use a managed secrets service for GitHub/model/provider credentials.
-- Run coding execution on a dedicated executor host, remote sandbox, or stronger VM/microVM boundary. The opt-in local Compose profile's Docker-socket mount is for controlled development, not the recommended multi-tenant production topology.
-- Add sandbox disk quotas and expand policies per supported language/package manager.
-- Add artifact/signature retention and release evidence.
+- Use a managed secrets service for GitHub/model/Vercel credentials.
+- Run coding execution on a dedicated remote sandbox or stronger VM/microVM boundary and add disk quotas.
+- Add signed release-evidence/artifact retention and explicit production-promotion policy.
