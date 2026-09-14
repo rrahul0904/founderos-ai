@@ -44,6 +44,7 @@ export interface AgentRunRecord {
 export type BuildRisk = "low" | "medium" | "high";
 export type BuildTaskStatus = "planned" | "issue_created" | "in_progress" | "done" | "blocked";
 export type BuildPlanStatus = "draft" | "approved" | "publishing" | "published" | "pr_open" | "blocked" | "completed";
+export type BuildExecutionStatus = "queued" | "running" | "completed" | "failed";
 
 export interface GitHubIssueReference {
   number: number;
@@ -53,6 +54,28 @@ export interface GitHubIssueReference {
 export interface GitHubPullRequestReference {
   number: number;
   url: string;
+}
+
+export interface BuildVerificationRecord {
+  status: "passed" | "failed";
+  summary: string;
+  completedAt: string;
+}
+
+export interface BuildExecutionRecord {
+  id: string;
+  projectId: string;
+  organizationId: string;
+  planId: string;
+  repository: string;
+  branchName: string;
+  baseBranch: string;
+  status: BuildExecutionStatus;
+  attempts: number;
+  lastError?: string | null;
+  result: Record<string, unknown>;
+  createdAt: string;
+  completedAt?: string | null;
 }
 
 export interface BuildTaskRecord {
@@ -81,6 +104,9 @@ export interface BuildPlanRecord {
   publishedAt?: string;
   branchCreatedAt?: string;
   pullRequest?: GitHubPullRequestReference;
+  executionId?: string;
+  executionCommit?: string;
+  verification?: BuildVerificationRecord;
   lastError?: string | null;
 }
 
