@@ -14,9 +14,10 @@
 10. GitHub delivery and build execution keep tokens server-side and deny repositories outside `FOUNDEROS_GITHUB_ALLOWED_REPOS` unless an explicit development escape hatch is enabled.
 11. External GitHub writes require an approved build plan and target a dedicated `founderos/*` branch rather than the base branch.
 12. Generated code cannot modify `.git`, GitHub workflow files, `.env`/credential/secret paths, dependency output, or generated build-output paths through the executor patch interface.
-13. Patch paths are traversal checked and symlink-parent checked before writes/deletes.
-14. Generated code runs without GitHub/OpenAI/FounderOS credentials. Verification has network disabled, Linux capabilities dropped, no-new-privileges, CPU/memory/PID limits, and an isolated dependency volume.
-15. A commit is pushed only after sandbox verification succeeds; failed executions remain explicit and auditable.
+13. Patch paths are traversal checked and both parent/target symlinks are rejected before writes; recursive directory deletion is blocked.
+14. Verification runs against a disposable copy of the generated worktree, so repository test/build scripts cannot mutate the checkout that will later be committed.
+15. Generated code receives no GitHub/OpenAI/FounderOS credentials. Verification has network disabled, Linux capabilities dropped, no-new-privileges, CPU/memory/PID limits, and an isolated dependency volume.
+16. A commit is pushed only after sandbox verification succeeds; failed executions remain explicit and auditable.
 
 ## Production hardening still required
 
@@ -24,4 +25,5 @@
 - Replace shared-key auth with SSO/OIDC before collaborative public SaaS use.
 - Use a managed secrets service for GitHub/model/provider credentials.
 - Run coding execution on a dedicated executor host, remote sandbox, or stronger VM/microVM boundary. The opt-in local Compose profile's Docker-socket mount is for controlled development, not the recommended multi-tenant production topology.
-- Expand sandbox policies per supported language/package manager and add artifact/signature retention.
+- Add sandbox disk quotas and expand policies per supported language/package manager.
+- Add artifact/signature retention and release evidence.

@@ -1,9 +1,10 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import pg from "pg";
+import { isForbiddenPath, normalizeRelativePath } from "./policy";
 
 const execFile = promisify(execFileCallback);
 const databaseUrl = process.env.DATABASE_URL;
@@ -51,29 +52,12 @@ type OpenAIResponse = {
 };
 
 const textExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".sql", ".yml", ".yaml", ".py", ".go", ".rs", ".java", ".kt", ".css", ".scss", ".html", ".toml", ".sh", ".txt"]);
-const forbiddenRoots = [".git", ".github/workflows", "node_modules", ".next", "dist", "build"];
-
-function isForbiddenPath(value: string) {
-  const lower = value.toLowerCase().replace(/\/$/, "");
-  return forbiddenRoots.some((root) => lower === root || lower.startsWith(`${root}/`));
-}
 
 function assertAllowedRepository(repository: string) {
   const canonical = repository.trim().toLowerCase();
   if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(canonical)) throw new Error("Invalid repository name");
   if (!allowAnyRepository && !allowedRepositories.has(canonical)) throw new Error(`Repository ${repository} is not allowlisted for build execution`);
   return canonical;
-}
-
-function normalizeRelativePath(value: string) {
-  const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-  if (!normalized || normalized.includes("\0") || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) throw new Error(`Unsafe path: ${value}`);
-  const clean = path.posix.normalize(normalized);
-  if (clean === ".." || clean.startsWith("../")) throw new Error(`Path escapes repository: ${value}`);
-  const lower = clean.toLowerCase();
-  if (lower === ".env" || lower.startsWith(".env.") || lower.includes("credentials") || lower.includes("secrets.")) throw new Error(`Sensitive path is blocked: ${clean}`);
-  if (isForbiddenPath(lower)) throw new Error(`Protected path is blocked: ${clean}`);
-  return clean;
 }
 
 async function assertNoSymlinkParents(root: string, relativePath: string) {
@@ -295,6 +279,7 @@ async function execute(job: BuildJob) {
   const repository = assertAllowedRepository(job.repository);
   const root = await mkdtemp(path.join(tmpdir(), "founderos-build-"));
   const repositoryDir = path.join(root, "repo");
+  const verificationDir = path.join(root, "verification");
   try {
     await git(["clone", "--depth", "1", "--branch", job.branch_name, `https://github.com/${repository}.git`, repositoryDir], undefined, 180000);
     const context = await collectRepositoryContext(repositoryDir);
@@ -303,7 +288,14 @@ async function execute(job: BuildJob) {
     await run("git", ["diff", "--check"], { cwd: repositoryDir, timeoutMs: 60000 });
     const { stdout: statusBefore } = await run("git", ["status", "--porcelain"], { cwd: repositoryDir });
     if (!statusBefore.trim()) throw new Error("Coding model produced no repository diff");
-    const verification = await verifyNodeProject(job, repositoryDir);
+    await cp(repositoryDir, verificationDir, {
+      recursive: true,
+      filter: (source) => {
+        const relative = path.relative(repositoryDir, source);
+        return relative !== ".git" && !relative.startsWith(`.git${path.sep}`);
+      }
+    });
+    const verification = await verifyNodeProject(job, verificationDir);
     await run("git", ["config", "user.name", "FounderOS Build Worker"], { cwd: repositoryDir });
     await run("git", ["config", "user.email", "founderos-build@users.noreply.github.com"], { cwd: repositoryDir });
     await run("git", ["add", "-A"], { cwd: repositoryDir });
