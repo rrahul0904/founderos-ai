@@ -1,12 +1,153 @@
-export type LifecycleStage="idea"|"evidence"|"decision"|"spec"|"architecture"|"build"|"deploy"|"learn";
-export type EvidenceSourceType="manual"|"web"|"search"|"interview"|"telemetry";
-export interface EvidenceRecord{id:string;projectId:string;sourceUrl?:string|null;sourceType:EvidenceSourceType;title?:string|null;claim:string;excerpt?:string|null;confidence:number;contentHash?:string|null;collectedAt:string;metadata:Record<string,unknown>}
-export interface ClaimRecord{id:string;projectId:string;statement:string;status:"hypothesis"|"supported"|"contested"|"rejected";confidence:number;evidenceIds:string[];createdAt:string}
-export interface AgentRunRecord{id:string;agent:"validation"|"product"|"architecture"|"learning";stage:LifecycleStage;provider:string;model?:string|null;status?:"completed"|"failed";output:string;evidenceIds?:string[];latencyMs?:number;inputTokens?:number;outputTokens?:number;costUsd?:number;createdAt:string}
-export interface FounderProject{id:string;organizationId:string;name:string;idea:string;stage:LifecycleStage;readiness:number;assumptions:string[];decisions:string[];latestOutput:string;runs:AgentRunRecord[];createdAt:string;updatedAt:string}
-export interface BudgetStatus{dailyBudgetUsd:number;perRunBudgetUsd:number;spentTodayUsd:number;remainingTodayUsd:number}
-export const DEV_ORGANIZATION_ID="00000000-0000-4000-8000-000000000001";export const DEV_USER_ID="00000000-0000-4000-8000-000000000002";
-export function deriveName(idea:string){const clean=idea.replace(/[^a-zA-Z0-9\s-]/g," ").replace(/\s+/g," ").trim();const words=clean.split(" ").filter(Boolean).slice(0,5);return words.length?words.join(" "):"Untitled product";}
-export function createProject(idea:string,organizationId=DEV_ORGANIZATION_ID):FounderProject{const now=new Date().toISOString();return{id:crypto.randomUUID(),organizationId,name:deriveName(idea),idea,stage:"idea",readiness:18,assumptions:["A reachable user has this problem","The pain is strong enough to change behavior","A focused MVP can test the thesis"],decisions:[],latestOutput:"",runs:[],createdAt:now,updatedAt:now};}
-export function readinessForStage(stage:LifecycleStage){const scores:Record<LifecycleStage,number>={idea:18,evidence:34,decision:48,spec:61,architecture:72,build:82,deploy:90,learn:96};return scores[stage];}
-export function normalizeConfidence(value:number){if(!Number.isFinite(value))return .5;return Math.max(0,Math.min(1,value));}
+export type LifecycleStage = "idea" | "evidence" | "decision" | "spec" | "architecture" | "build" | "deploy" | "learn";
+export type EvidenceSourceType = "manual" | "web" | "search" | "interview" | "telemetry";
+
+export interface EvidenceRecord {
+  id: string;
+  projectId: string;
+  sourceUrl?: string | null;
+  sourceType: EvidenceSourceType;
+  title?: string | null;
+  claim: string;
+  excerpt?: string | null;
+  confidence: number;
+  contentHash?: string | null;
+  collectedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ClaimRecord {
+  id: string;
+  projectId: string;
+  statement: string;
+  status: "hypothesis" | "supported" | "contested" | "rejected";
+  confidence: number;
+  evidenceIds: string[];
+  createdAt: string;
+}
+
+export interface AgentRunRecord {
+  id: string;
+  agent: "validation" | "product" | "architecture" | "learning";
+  stage: LifecycleStage;
+  provider: string;
+  model?: string | null;
+  status?: "completed" | "failed";
+  output: string;
+  evidenceIds?: string[];
+  latencyMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  createdAt: string;
+}
+
+export type BuildRisk = "low" | "medium" | "high";
+export type BuildTaskStatus = "planned" | "issue_created" | "in_progress" | "done" | "blocked";
+export type BuildPlanStatus = "draft" | "approved" | "publishing" | "published" | "blocked" | "completed";
+
+export interface GitHubIssueReference {
+  number: number;
+  url: string;
+}
+
+export interface BuildTaskRecord {
+  id: string;
+  order: number;
+  title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  risk: BuildRisk;
+  status: BuildTaskStatus;
+  githubIssue?: GitHubIssueReference;
+}
+
+export interface BuildPlanRecord {
+  id: string;
+  projectId: string;
+  repository: string;
+  baseBranch: string;
+  branchName: string;
+  objective: string;
+  status: BuildPlanStatus;
+  tasks: BuildTaskRecord[];
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  publishedAt?: string;
+  branchCreatedAt?: string;
+  lastError?: string | null;
+}
+
+export interface FounderProject {
+  id: string;
+  organizationId: string;
+  name: string;
+  idea: string;
+  stage: LifecycleStage;
+  readiness: number;
+  assumptions: string[];
+  decisions: string[];
+  latestOutput: string;
+  runs: AgentRunRecord[];
+  buildPlans?: BuildPlanRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetStatus {
+  dailyBudgetUsd: number;
+  perRunBudgetUsd: number;
+  spentTodayUsd: number;
+  remainingTodayUsd: number;
+}
+
+export const DEV_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
+export const DEV_USER_ID = "00000000-0000-4000-8000-000000000002";
+
+export function deriveName(idea: string) {
+  const clean = idea.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+  const words = clean.split(" ").filter(Boolean).slice(0, 5);
+  return words.length ? words.join(" ") : "Untitled product";
+}
+
+export function createProject(idea: string, organizationId = DEV_ORGANIZATION_ID): FounderProject {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    organizationId,
+    name: deriveName(idea),
+    idea,
+    stage: "idea",
+    readiness: 18,
+    assumptions: [
+      "A reachable user has this problem",
+      "The pain is strong enough to change behavior",
+      "A focused MVP can test the thesis"
+    ],
+    decisions: [],
+    latestOutput: "",
+    runs: [],
+    buildPlans: [],
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function readinessForStage(stage: LifecycleStage) {
+  const scores: Record<LifecycleStage, number> = {
+    idea: 18,
+    evidence: 34,
+    decision: 48,
+    spec: 61,
+    architecture: 72,
+    build: 82,
+    deploy: 90,
+    learn: 96
+  };
+  return scores[stage];
+}
+
+export function normalizeConfidence(value: number) {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
