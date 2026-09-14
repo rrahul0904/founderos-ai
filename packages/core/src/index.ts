@@ -62,6 +62,21 @@ export interface BuildVerificationRecord {
   completedAt: string;
 }
 
+export interface ReleaseEvidenceRecord {
+  version: 1;
+  executionId: string;
+  planId: string;
+  repository: string;
+  branchName: string;
+  baseBranch: string;
+  commitSha: string;
+  model: string;
+  changedFiles: string[];
+  verificationCommand: string;
+  generatedAt: string;
+  digestSha256: string;
+}
+
 export interface BuildExecutionRecord {
   id: string;
   projectId: string;
@@ -107,6 +122,7 @@ export interface BuildPlanRecord {
   executionId?: string;
   executionCommit?: string;
   verification?: BuildVerificationRecord;
+  releaseEvidence?: ReleaseEvidenceRecord;
   lastError?: string | null;
 }
 

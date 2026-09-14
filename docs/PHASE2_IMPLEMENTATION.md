@@ -16,9 +16,11 @@
 - Generated changes are constrained by file-count, byte, traversal, symlink, secret-path, generated-output, and CI-workflow restrictions.
 - The first sandbox strategy supports root Node.js projects.
 - Dependency installation happens in a container without FounderOS/GitHub/OpenAI secrets; verification runs with network disabled, dropped Linux capabilities, no-new-privileges, CPU/memory/PID limits, and an isolated node_modules volume.
+- Verification runs on a disposable copy, so test/build scripts cannot mutate the checkout that is later committed.
 - Code is committed and pushed to the guarded branch only after sandbox verification passes.
+- Successful executions produce a deterministic SHA-256 release-evidence manifest binding execution, plan, repository/branches, verified commit, model, changed files, verification command, and completion time.
 - After verified code exists, FounderOS can open or reuse a draft pull request.
-- Build execution success/failure and GitHub actions emit audit records in PostgreSQL mode.
+- Build execution success/failure, release evidence, and GitHub actions emit audit records in PostgreSQL mode.
 
 ## Required configuration
 
@@ -53,8 +55,8 @@ Missing credentials, unallowlisted repositories, insufficient GitHub permissions
 
 - additional language/package-manager sandbox strategies beyond root Node.js
 - stronger production executor isolation such as microVM/firecracker-class boundaries or a dedicated remote sandbox provider
-- signed release-evidence manifests and artifact retention
+- cryptographic signing/key management and artifact retention for the release-evidence manifest
 - preview deployment adapters and browser verification
-- managed secret-store integration
+- production secret-manager integration
 
 The executor is intentionally opt-in until those production isolation controls are chosen for a deployment environment.

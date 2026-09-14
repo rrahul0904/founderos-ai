@@ -29,10 +29,11 @@
 - ✅ durable build execution queue separate from research jobs
 - ✅ opt-in Node.js coding worker with constrained model patch protocol
 - ✅ container sandbox verification before commit/push
+- ✅ deterministic SHA-256 release-evidence integrity manifest
 - ✅ draft pull-request open/reuse after verified branch code exists
+- ⏳ release-evidence signing + artifact retention
 - ⏳ additional language/package-manager executors
 - ⏳ production microVM/remote-sandbox isolation
-- ⏳ signed release-evidence manifests
 - ⏳ preview deployment adapters + browser verification
 
 ## Phase 3 — production learning loop

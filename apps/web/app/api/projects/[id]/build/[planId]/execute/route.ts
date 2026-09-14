@@ -1,4 +1,5 @@
 import { renderWorkOrder, replaceBuildPlan } from "@founderos/build";
+import { createReleaseEvidence } from "@founderos/build/release-evidence";
 import { enqueueBuildExecution, getBuildExecution } from "@founderos/db/build-executions";
 import { requirePrincipal } from "../../../../../../../lib/auth";
 import { getProject, updateProject, writeAuditEvent } from "../../../../../../../lib/store";
@@ -15,7 +16,38 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!process.env.DATABASE_URL) return Response.json({ plan, execution: null, error: "DATABASE_URL is required for durable build execution" }, { status: 409 });
   const execution = await getBuildExecution({ projectId: id, organizationId: auth.principal.organizationId, executionId: plan.executionId });
   const refreshed = await getProject(id, auth.principal.organizationId);
-  const refreshedPlan = (refreshed?.buildPlans ?? []).find((item) => item.id === planId) ?? plan;
+  let refreshedPlan = (refreshed?.buildPlans ?? []).find((item) => item.id === planId) ?? plan;
+  if (execution?.status === "completed" && !refreshedPlan.releaseEvidence && refreshed) {
+    const result = execution.result ?? {};
+    const commitSha = typeof result.commitSha === "string" ? result.commitSha : "";
+    const model = typeof result.model === "string" ? result.model : "";
+    const changedFiles = Array.isArray(result.changedFiles) ? result.changedFiles.filter((item): item is string => typeof item === "string") : [];
+    const verification = result.verification && typeof result.verification === "object" ? result.verification as Record<string, unknown> : {};
+    const verificationCommand = typeof verification.command === "string" ? verification.command : "";
+    if (commitSha && model && verificationCommand) {
+      const releaseEvidence = createReleaseEvidence({
+        executionId: execution.id,
+        planId,
+        repository: refreshedPlan.repository,
+        branchName: refreshedPlan.branchName,
+        baseBranch: refreshedPlan.baseBranch,
+        commitSha,
+        model,
+        changedFiles,
+        verificationCommand,
+        generatedAt: execution.completedAt ?? new Date().toISOString()
+      });
+      refreshedPlan = { ...refreshedPlan, releaseEvidence };
+      await updateProject(id, auth.principal.organizationId, { buildPlans: replaceBuildPlan(refreshed, refreshedPlan) });
+      await writeAuditEvent({
+        organizationId: auth.principal.organizationId,
+        projectId: id,
+        actorUserId: auth.principal.userId,
+        eventName: "build.release_evidence_created",
+        properties: { plan_id: planId, execution_id: execution.id, commit: commitSha, digest_sha256: releaseEvidence.digestSha256 }
+      });
+    }
+  }
   return Response.json({ plan: refreshedPlan, execution });
 }
 
