@@ -43,9 +43,14 @@ export interface AgentRunRecord {
 
 export type BuildRisk = "low" | "medium" | "high";
 export type BuildTaskStatus = "planned" | "issue_created" | "in_progress" | "done" | "blocked";
-export type BuildPlanStatus = "draft" | "approved" | "publishing" | "published" | "blocked" | "completed";
+export type BuildPlanStatus = "draft" | "approved" | "publishing" | "published" | "pr_open" | "blocked" | "completed";
 
 export interface GitHubIssueReference {
+  number: number;
+  url: string;
+}
+
+export interface GitHubPullRequestReference {
   number: number;
   url: string;
 }
@@ -75,6 +80,7 @@ export interface BuildPlanRecord {
   approvedBy?: string;
   publishedAt?: string;
   branchCreatedAt?: string;
+  pullRequest?: GitHubPullRequestReference;
   lastError?: string | null;
 }
 

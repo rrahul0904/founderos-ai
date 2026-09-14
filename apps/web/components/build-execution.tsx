@@ -52,6 +52,15 @@ export function BuildExecution({ projectId, projectName, initialPlans }: { proje
     finally { setBusy(null); }
   }
 
+  async function openPullRequest(planId: string) {
+    setBusy(planId); setMessage("");
+    try {
+      replace(await call(`/api/projects/${projectId}/build/${planId}/pull-request`, { method: "POST" }));
+      setMessage("Draft pull request opened or reused.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to open pull request"); }
+    finally { setBusy(null); }
+  }
+
   async function copyWorkOrder(planId: string) {
     setBusy(planId); setMessage("");
     try {
@@ -83,7 +92,8 @@ export function BuildExecution({ projectId, projectName, initialPlans }: { proje
         <div><div className="small muted">{plan.repository} · {plan.baseBranch} → {plan.branchName}</div><h3>{plan.objective}</h3></div>
         <span className="pill">{plan.status}</span>
       </div>
-      {plan.lastError ? <div className="error small">Blocked: {plan.lastError}</div> : null}
+      {plan.lastError ? <div className="error small">Last external blocker: {plan.lastError}</div> : null}
+      {plan.pullRequest ? <p><a href={plan.pullRequest.url} target="_blank" rel="noreferrer">Draft pull request #{plan.pullRequest.number}</a></p> : null}
       <div className="timeline" style={{ marginTop: 14 }}>
         {[...plan.tasks].sort((a, b) => a.order - b.order).map((task) => <div className="event" key={task.id}>
           <b>{task.order}. {task.title} · {task.risk}</b>
@@ -94,6 +104,7 @@ export function BuildExecution({ projectId, projectName, initialPlans }: { proje
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {plan.status === "draft" || (plan.status === "blocked" && !plan.approvedAt) ? <button className="agent-btn" disabled={busy !== null} onClick={() => approve(plan.id)}><b>Approve plan</b><span>Human gate before external GitHub writes.</span></button> : null}
         {plan.approvedAt && ["approved", "publishing", "blocked"].includes(plan.status) ? <button className="agent-btn" disabled={busy !== null} onClick={() => publish(plan.id)}><b>{busy === plan.id ? "Publishing…" : "Publish to GitHub"}</b><span>Create/resume branch and implementation issues idempotently.</span></button> : null}
+        {plan.status === "published" && !plan.pullRequest ? <button className="agent-btn" disabled={busy !== null} onClick={() => openPullRequest(plan.id)}><b>{busy === plan.id ? "Opening PR…" : "Open draft PR"}</b><span>GitHub will reject this truthfully if the branch has no code diff yet.</span></button> : null}
         <button className="agent-btn" disabled={busy !== null} onClick={() => copyWorkOrder(plan.id)}><b>Copy work order</b><span>Portable implementation context for a coding agent or operator.</span></button>
       </div>
     </div>)}

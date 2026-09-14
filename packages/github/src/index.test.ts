@@ -55,3 +55,15 @@ test("branch creation is idempotent when GitHub reports an existing ref", async 
   assert.equal(branch.existed, true);
   assert.equal(branch.sha, "existing-sha");
 });
+
+test("reuses an existing pull request for the guarded branch", async () => {
+  let postCalls = 0;
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") postCalls += 1;
+    return jsonResponse([{ number: 17, html_url: "https://github.com/acme/widget/pull/17", head: { ref: "founderos/task" }, base: { ref: "main" } }]);
+  }) as typeof fetch;
+  const client = new GitHubDeliveryClient({ token: "secret", allowedRepositories: ["acme/widget"], fetcher });
+  const pull = await client.ensurePullRequest("acme/widget", { head: "founderos/task", base: "main", title: "Ship task", body: "body" });
+  assert.equal(pull.number, 17);
+  assert.equal(postCalls, 0);
+});

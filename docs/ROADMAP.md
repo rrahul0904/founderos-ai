@@ -33,9 +33,10 @@
 - ✅ explicit human approval before GitHub writes
 - ✅ dedicated branch creation with idempotent retry
 - ✅ resumable issue publication and portable work-order export
+- ✅ draft pull-request open/reuse after branch code exists
 - ✅ project lifecycle/audit state for build publication
 - ⏳ isolated/sandboxed coding agent executor
-- ⏳ generated code commits + pull-request workflow
+- ⏳ repository checkout, generated patches, and code commits
 - ⏳ branch verification and release-evidence manifest
 - ⏳ preview deployment adapters + browser verification
 

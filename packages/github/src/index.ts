@@ -17,6 +17,11 @@ export interface GitHubIssueResult {
   url: string;
 }
 
+export interface GitHubPullRequestResult {
+  number: number;
+  url: string;
+}
+
 export interface GitHubBranchResult {
   name: string;
   sha: string;
@@ -155,5 +160,32 @@ export class GitHubDeliveryClient {
     }
     const data = await response.json() as { object?: { sha?: string } };
     return { name: branchName, sha: data.object?.sha || baseSha, existed: false };
+  }
+
+  async ensurePullRequest(repository: string, input: { head: string; base: string; title: string; body: string }): Promise<GitHubPullRequestResult> {
+    const canonical = this.assertAllowed(repository);
+    const [owner] = canonical.split("/");
+    const head = `${owner}:${input.head}`;
+    const query = new URLSearchParams({ state: "all", head, base: input.base, per_page: "100" });
+    const existingResponse = await this.request(`/repos/${canonical}/pulls?${query.toString()}`);
+    const existing = await existingResponse.json() as Array<{ number?: number; html_url?: string; head?: { ref?: string }; base?: { ref?: string } }>;
+    const match = existing.find((item) => item.head?.ref === input.head && item.base?.ref === input.base && item.number && item.html_url);
+    if (match?.number && match.html_url) return { number: match.number, url: match.html_url };
+
+    const response = await this.request(`/repos/${canonical}/pulls`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: input.title.slice(0, 240),
+        body: input.body,
+        head: input.head,
+        base: input.base,
+        draft: true,
+        maintainer_can_modify: true
+      })
+    });
+    const data = await response.json() as { number?: number; html_url?: string };
+    if (!data.number || !data.html_url) throw new Error("GitHub pull request response was incomplete");
+    return { number: data.number, url: data.html_url };
   }
 }
