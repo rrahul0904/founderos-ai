@@ -5,8 +5,7 @@ services:
       POSTGRES_USER: founderos
       POSTGRES_PASSWORD: founderos
       POSTGRES_DB: founderos
-    ports:
-      - "5432:5432"
+    ports: ["5432:5432"]
     volumes:
       - founderos_pg:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -24,8 +23,7 @@ services:
       DATABASE_URL: postgres://founderos:founderos@postgres:5432/founderos
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
     restart: unless-stopped
 
   build-worker:
@@ -43,11 +41,22 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       BUILD_EXECUTION_MODEL: ${BUILD_EXECUTION_MODEL:-}
       BUILD_SANDBOX_IMAGE: ${BUILD_SANDBOX_IMAGE:-node:22-alpine}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  preview-worker:
+    profiles: ["preview-verifier"]
+    build:
+      context: .
+      dockerfile: apps/preview-worker/Dockerfile
+    environment:
+      DATABASE_URL: postgres://founderos:founderos@postgres:5432/founderos
+      PREVIEW_VERIFY_ENABLED: "true"
+      PREVIEW_BROWSER_TIMEOUT_MS: ${PREVIEW_BROWSER_TIMEOUT_MS:-45000}
+    depends_on:
+      postgres: { condition: service_healthy }
     restart: unless-stopped
 
 volumes:
