@@ -51,7 +51,12 @@ type OpenAIResponse = {
 };
 
 const textExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".sql", ".yml", ".yaml", ".py", ".go", ".rs", ".java", ".kt", ".css", ".scss", ".html", ".toml", ".sh", ".txt"]);
-const forbiddenPrefixes = [".git/", ".github/workflows/", "node_modules/", ".next/", "dist/", "build/"];
+const forbiddenRoots = [".git", ".github/workflows", "node_modules", ".next", "dist", "build"];
+
+function isForbiddenPath(value: string) {
+  const lower = value.toLowerCase().replace(/\/$/, "");
+  return forbiddenRoots.some((root) => lower === root || lower.startsWith(`${root}/`));
+}
 
 function assertAllowedRepository(repository: string) {
   const canonical = repository.trim().toLowerCase();
@@ -67,7 +72,7 @@ function normalizeRelativePath(value: string) {
   if (clean === ".." || clean.startsWith("../")) throw new Error(`Path escapes repository: ${value}`);
   const lower = clean.toLowerCase();
   if (lower === ".env" || lower.startsWith(".env.") || lower.includes("credentials") || lower.includes("secrets.")) throw new Error(`Sensitive path is blocked: ${clean}`);
-  if (forbiddenPrefixes.some((prefix) => lower.startsWith(prefix))) throw new Error(`Protected path is blocked: ${clean}`);
+  if (isForbiddenPath(lower)) throw new Error(`Protected path is blocked: ${clean}`);
   return clean;
 }
 
@@ -86,14 +91,25 @@ async function assertNoSymlinkParents(root: string, relativePath: string) {
   }
 }
 
+async function assertTargetIsNotSymlink(target: string, relativePath: string) {
+  try {
+    const info = await lstat(target);
+    if (info.isSymbolicLink()) throw new Error(`Symlink target is blocked: ${relativePath}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
+
 async function run(command: string, args: string[], options: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}) {
   const result = await execFile(command, args, {
     cwd: options.cwd,
     timeout: options.timeoutMs ?? 120000,
     maxBuffer: 8 * 1024 * 1024,
-    env: options.env ?? process.env
+    env: options.env ?? process.env,
+    encoding: "utf8"
   });
-  return { stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+  return { stdout: String(result.stdout ?? ""), stderr: String(result.stderr ?? "") };
 }
 
 async function git(args: string[], cwd?: string, timeoutMs?: number) {
@@ -135,7 +151,7 @@ async function collectRepositoryContext(repositoryDir: string) {
     const relative = raw.replace(/\\/g, "/");
     const lower = relative.toLowerCase();
     if (lower === ".env" || lower.startsWith(".env.") || lower.includes("credentials") || lower.includes("secret")) continue;
-    if (forbiddenPrefixes.some((prefix) => lower.startsWith(prefix))) continue;
+    if (isForbiddenPath(lower)) continue;
     const extension = path.posix.extname(relative).toLowerCase();
     if (!textExtensions.has(extension) && !["dockerfile", "makefile"].includes(path.posix.basename(lower))) continue;
     try {
@@ -198,6 +214,7 @@ async function applyPatch(repositoryDir: string, patch: ModelPatch) {
     await assertNoSymlinkParents(repositoryDir, relative);
     const target = path.resolve(repositoryDir, relative);
     if (!target.startsWith(`${path.resolve(repositoryDir)}${path.sep}`)) throw new Error(`Unsafe target path: ${relative}`);
+    await assertTargetIsNotSymlink(target, relative);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, item.content, "utf8");
   }
@@ -210,11 +227,12 @@ async function applyPatch(repositoryDir: string, patch: ModelPatch) {
     try {
       const info = await lstat(target);
       if (info.isSymbolicLink()) throw new Error(`Symlink deletion is blocked: ${relative}`);
+      if (info.isDirectory()) throw new Error(`Recursive directory deletion is blocked: ${relative}`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
-    await rm(target, { recursive: true, force: true });
+    await rm(target, { force: true });
   }
 }
 
@@ -303,14 +321,13 @@ async function execute(job: BuildJob) {
       changedFiles: changedFiles.split("\n").filter(Boolean).slice(0, 100),
       verification: { command: verification.command, log: verification.verifyLog.slice(-12000) }
     };
-    await complete(job, result);
     await updateProjectPlan(job, {
       executionId: job.id,
       executionCommit: commitSha,
       lastError: null,
-      verification: { status: "passed", summary: `Sandbox verification passed: ${verification.command}`, completedAt: new Date().toISOString() },
-      tasks: undefined
+      verification: { status: "passed", summary: `Sandbox verification passed: ${verification.command}`, completedAt: new Date().toISOString() }
     });
+    await complete(job, result);
     console.log(JSON.stringify({ event: "build_execution_completed", execution_id: job.id, repository, commit: commitSha }));
   } finally {
     await rm(root, { recursive: true, force: true }).catch(() => undefined);
