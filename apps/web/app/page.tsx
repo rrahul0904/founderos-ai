@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { IdeaForm } from "../components/idea-form";
 
 const phases = [
@@ -25,6 +26,7 @@ export default function HomePage() {
             deployment signals and customer learning in one durable context.
           </p>
           <IdeaForm />
+          <Link href="/quick-validate" style={{display:"inline-flex",marginTop:16,color:"var(--accent)",fontWeight:750}}>Not ready to create a project? Run a no-save Quick Validation →</Link>
         </div>
         <div className="flow">
           {phases.map(([title, copy]) => (
