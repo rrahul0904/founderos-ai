@@ -10,6 +10,7 @@ import {
   type EvidenceRecord,
   type EvidenceSourceType,
   type FounderProject,
+  type FounderIntelligenceState,
   type LifecycleStage
 } from "@founderos/core";
 import { PostgresFounderRepository, createPool } from "@founderos/db";
@@ -42,3 +43,21 @@ export async function listAudit(projectId:string,organizationId:string){const re
 export async function listClaims(projectId:string,organizationId:string){const repo=pgRepo();if(repo)return repo.listClaims(projectId,organizationId);return memory.claims.get(projectId)??[];}
 export async function addClaim(projectId:string,organizationId:string,statement:string,evidenceIds:string[],confidence=.5){const claim:ClaimRecord={id:crypto.randomUUID(),projectId,statement,status:evidenceIds.length?"supported":"hypothesis",confidence:normalizeConfidence(confidence),evidenceIds,createdAt:new Date().toISOString()};const repo=pgRepo();if(repo){await repo.addClaim(claim,organizationId);await repo.writeAudit({organizationId,projectId,eventName:"claim.created",properties:{claim_id:claim.id,evidence_count:evidenceIds.length}});}else memory.claims.set(projectId,[claim,...(memory.claims.get(projectId)??[])]);return claim;}
 export async function writeAuditEvent(input:{organizationId:string;projectId?:string|null;actorUserId?:string|null;eventName:string;properties?:Record<string,unknown>}){const repo=pgRepo();if(repo)await repo.writeAudit(input);}
+
+/** Atomically persist a Founder Intelligence revision and its provenance record.
+ * PostgreSQL locks the owning project row; memory mode is single-process development only.
+ */
+export function prepareCustomerSignalEvidence(input:{projectId:string;kind:string;quote:string;persona:string;source:string}):EvidenceRecord {
+ const claim=`Interview signal: ${input.quote.slice(0,700)}`;
+ return {id:crypto.randomUUID(),projectId:input.projectId,sourceType:"interview",sourceUrl:null,title:`Customer ${input.kind}`,claim,excerpt:input.quote,confidence:.6,contentHash:createHash("sha256").update(`\n${claim}\n${input.quote}`).digest("hex"),collectedAt:new Date().toISOString(),metadata:{kind:input.kind,persona:input.persona,source:input.source,origin:"founder-intelligence"}};
+}
+export async function saveFounderIntelligence(projectId:string,organizationId:string,expectedRevision:number,state:FounderIntelligenceState,evidence?:EvidenceRecord):Promise<FounderProject|null> {
+ const repo=pgRepo();
+ if(repo)return repo.saveFounderIntelligence(projectId,organizationId,expectedRevision,state,evidence);
+ const current=memory.projects.get(projectId);
+ if(!current||current.organizationId!==organizationId||(current.founderIntelligence?.revision??0)!==expectedRevision)return null;
+ const updated={...current,founderIntelligence:state,updatedAt:new Date().toISOString()};
+ memory.projects.set(projectId,updated);
+ if(evidence)memory.evidence.set(projectId,[evidence,...(memory.evidence.get(projectId)??[])]);
+ return updated;
+}
