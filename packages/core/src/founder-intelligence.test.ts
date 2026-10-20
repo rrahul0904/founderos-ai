@@ -32,3 +32,9 @@ test("invalid quote and threshold are refused",()=>{
  assert.throws(()=>addCustomerSignal(initialFounderIntelligence(),{evidenceId:"a",kind:"pain",quote:"short",persona:"CTO"},"x"),/12/);
  assert.throws(()=>setPivotRule(initialFounderIntelligence(),{metric:"trials",threshold:0,current:0,deadline:"2026-10-30",fallback:"revisit"}),/Invalid pivot/);
 });
+
+test("ledger capacity cannot silently discard customer evidence",()=>{
+ const initial=initialFounderIntelligence();
+ const full={...initial,signals:Array.from({length:250},(_,i)=>({id:String(i),evidenceId:String(i),kind:"pain" as const,quote:"A sufficiently long customer quote",persona:"CTO",source:"interview",recordedAt:"2026-10-20T00:00:00Z"}))};
+ assert.throws(()=>addCustomerSignal(full,{evidenceId:"251",kind:"pain",quote:"A further specific customer quote",persona:"CTO"},"251"),/capacity limit/);
+});
