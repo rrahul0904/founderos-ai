@@ -45,7 +45,7 @@ Authenticated GET/POST `/api/projects/:id/intelligence`; POST JSON always includ
 - `{action:"replan",revision}`
 - `{action:"complete",id,complete:boolean,revision}`
 - `{action:"artifact",kind:"gtm"|"competitor"|"financial"|"research"|"fundraising"|"brainstorm",revision}`
-GET/POST refuse an unauthorized/unknown project. POST refuses unsupported actions, invalid signal/rule inputs and stale client revision. The POST artifact flow is read-only.
+GET/POST refuse an unauthorized/unknown project. POST refuses unsupported actions, invalid signal/rule inputs and stale client revision; database revision checks use a project row lock and commit evidence in the same transaction. The POST artifact flow is read-only.
 
 ## UI
 Navigate to `/projects/:id/intelligence` from a project workspace. Edit the company file, log and review quotes, configure and review pivot rule, replan today's move list, complete a move, and copy review-only specialist deliverables.
@@ -54,7 +54,7 @@ Navigate to `/projects/:id/intelligence` from a project workspace. Edit the comp
 Run `npm run verify` (workspace type checks, node tests, Next.js production build). The root `npm test` includes `packages/core/src/founder-intelligence.test.ts`. Tests cover redaction, reviewed profile edits, evidence IDs, rule deadlines, missed threshold review, plan tasks and invalid input. **Do not mark release complete from branch commits alone.** Record GitHub Actions run SHA/result, actual Postgres migration success, HTTP authorization/tenant tests, and browser UX receipts before promotion.
 
 ## P1 production hardening and acceptance gates
-1. Atomic Postgres company-file version compare-and-swap; ensure signal insert + state update in one transaction. Current JSON payload update is a P0 single-writer implementation and can lose concurrent writes; orphan evidence risk on failed second write.
+1. PostgreSQL project-row locking now atomically commits a signal and its state revision; add load/race tests for mixed project writers. Other project update paths still use whole-payload upserts and could overwrite concurrent founder-memory updates.
 2. Multi-user RBAC, Postgres RLS, hardened CSRF/session/SSO, organization invite and scoped audit.
 3. Data retention and removal, interview consent model, stronger secrets/PII redaction, tenant leak tests, encryption and backup restoration.
 4. Source document upload and retrievable evidence citation with robust RAG, model prompt-injection tests.
