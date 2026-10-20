@@ -40,7 +40,7 @@ export function redactSensitive(input: string): string {
 function scrub(value: unknown, max: number): string {
   return redactSensitive(typeof value === "string" ? value.trim().slice(0,max) : "");
 }
-export function updateCompanyProfile(state:FounderIntelligenceState, input:Partial<CompanyProfile>):FounderIntelligenceState {
+export function updateCompanyProfile(state:FounderIntelligenceState, input:Partial<Record<keyof CompanyProfile, unknown>>):FounderIntelligenceState {
   const profile={...state.profile};
   for (const key of fields) if (Object.prototype.hasOwnProperty.call(input,key)) profile[key]=scrub(input[key],1000);
   return {...state,profile,revision:state.revision+1};
