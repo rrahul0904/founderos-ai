@@ -1,3 +1,5 @@
+import type { FounderIntelligenceState } from "./founder-intelligence";
+export * from "./founder-intelligence";
 export type LifecycleStage = "idea" | "evidence" | "decision" | "spec" | "architecture" | "build" | "deploy" | "learn";
 export type EvidenceSourceType = "manual" | "web" | "search" | "interview" | "telemetry";
 export interface EvidenceRecord{id:string;projectId:string;sourceUrl?:string|null;sourceType:EvidenceSourceType;title?:string|null;claim:string;excerpt?:string|null;confidence:number;contentHash?:string|null;collectedAt:string;metadata:Record<string,unknown>}
@@ -13,7 +15,7 @@ export interface PreviewVerificationRecord{id:string;projectId:string;organizati
 export interface BuildExecutionRecord{id:string;projectId:string;organizationId:string;planId:string;repository:string;branchName:string;baseBranch:string;status:BuildExecutionStatus;attempts:number;lastError?:string|null;result:Record<string,unknown>;createdAt:string;completedAt?:string|null}
 export interface BuildTaskRecord{id:string;order:number;title:string;description:string;acceptanceCriteria:string[];risk:BuildRisk;status:BuildTaskStatus;githubIssue?:GitHubIssueReference}
 export interface BuildPlanRecord{id:string;projectId:string;repository:string;baseBranch:string;branchName:string;objective:string;status:BuildPlanStatus;tasks:BuildTaskRecord[];createdAt:string;approvedAt?:string;approvedBy?:string;publishedAt?:string;branchCreatedAt?:string;pullRequest?:GitHubPullRequestReference;executionId?:string;executionCommit?:string;verification?:BuildVerificationRecord;releaseEvidence?:ReleaseEvidenceRecord;preview?:{provider:"vercel";teamId:string;projectId:string;deployment?:PreviewDeploymentRecord;verificationId?:string;verificationStatus?:PreviewVerificationRecord["status"];browserReport?:PreviewBrowserReport};lastError?:string|null}
-export interface FounderProject{id:string;organizationId:string;name:string;idea:string;stage:LifecycleStage;readiness:number;assumptions:string[];decisions:string[];latestOutput:string;runs:AgentRunRecord[];buildPlans?:BuildPlanRecord[];createdAt:string;updatedAt:string}
+export interface FounderProject{founderIntelligence?:FounderIntelligenceState;id:string;organizationId:string;name:string;idea:string;stage:LifecycleStage;readiness:number;assumptions:string[];decisions:string[];latestOutput:string;runs:AgentRunRecord[];buildPlans?:BuildPlanRecord[];createdAt:string;updatedAt:string}
 export interface BudgetStatus{dailyBudgetUsd:number;perRunBudgetUsd:number;spentTodayUsd:number;remainingTodayUsd:number}
 export const DEV_ORGANIZATION_ID="00000000-0000-4000-8000-000000000001"; export const DEV_USER_ID="00000000-0000-4000-8000-000000000002";
 export function deriveName(idea:string){const clean=idea.replace(/[^a-zA-Z0-9\s-]/g," ").replace(/\s+/g," ").trim();const words=clean.split(" ").filter(Boolean).slice(0,5);return words.length?words.join(" "):"Untitled product";}
