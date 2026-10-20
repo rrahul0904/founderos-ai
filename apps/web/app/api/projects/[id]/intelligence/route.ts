@@ -36,7 +36,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
  const body=await request.json().catch(()=>null);
  if(!isObject(body))return Response.json({error:"JSON object required"},{status:400});
  const original=project.founderIntelligence??initialFounderIntelligence();
- if(!Number.isInteger(body.revision)||body.revision!==original.revision)return Response.json({error:"Stale founder state; reload and retry"},{status:409});
+ if(typeof body.revision!=="number"||!Number.isInteger(body.revision)||body.revision!==original.revision)return Response.json({error:"Stale founder state; reload and retry"},{status:409});
  const action=String(body.action??"");
  try{
   if(action==="artifact"){
