@@ -52,8 +52,9 @@ export function addCustomerSignal(state:FounderIntelligenceState, input:{
   const quote=scrub(input.quote,4000);
   if (quote.length<12) throw new Error("Customer quote must have at least 12 characters");
   if (!input.evidenceId) throw new Error("An evidence record is required");
+  if (state.signals.length>=250) throw new Error("Signal capacity limit reached; archive older evidence before adding more");
   const item:CustomerSignal={id,evidenceId:input.evidenceId,kind:input.kind,quote,persona:scrub(input.persona,160),source:scrub(input.source??"",160),recordedAt:now.toISOString()};
-  return {...state,signals:[item,...state.signals].slice(0,250),revision:state.revision+1};
+  return {...state,signals:[item,...state.signals],revision:state.revision+1};
 }
 export function setPivotRule(state:FounderIntelligenceState, rule:PivotRule):FounderIntelligenceState {
   if (!rule.metric?.trim() || rule.metric.length>120 || !rule.fallback?.trim() || rule.fallback.length>500) throw new Error("Metric and fallback are required");
