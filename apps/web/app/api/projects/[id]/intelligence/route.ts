@@ -12,7 +12,7 @@ const specialists=new Set<SpecialistKind>(["gtm","competitor","financial","resea
 function sameOrigin(request:Request) {
   const origin=request.headers.get("origin");
   if(!origin)return true;
-  try{return new URL(origin).host===new URL(request.url).host;}catch{return false;}
+  try{return new URL(origin).origin===new URL(request.url).origin;}catch{return false;}
 }
 
 export async function GET(request:Request,context:{params:Promise<{id:string}>}){
@@ -81,7 +81,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   return Response.json({state,pivot:evaluatePivot(state.rule)});
  }catch(error){
   if(error instanceof RangeError)return Response.json({error:"Invalid numeric or date value"},{status:400});
-  if(error instanceof Error && /Invalid|Unsupported|required|found|characters|quote/i.test(error.message))return Response.json({error:error.message},{status:400});
+  if(error instanceof Error && /Invalid|Unsupported|required|found|characters|quote|limit|capacity/i.test(error.message))return Response.json({error:error.message},{status:400});
   return Response.json({error:"Unable to save founder intelligence"},{status:500});
  }
 }
