@@ -3,7 +3,7 @@ import {
   replanFounderDay, setMoveComplete, setPivotRule, specialistArtifact, updateCompanyProfile,
   type PivotRule, type SignalKind, type SpecialistKind
 } from "@founderos/core";
-import { addEvidence, getProject, updateProject, writeAuditEvent } from "../../../../../lib/store";
+import { getProject, prepareCustomerSignalEvidence, saveFounderIntelligence, writeAuditEvent } from "../../../../../lib/store";
 import { requirePrincipal } from "../../../../../lib/auth";
 
 type Payload = Record<string, unknown>;
@@ -44,6 +44,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
    return Response.json({state:original,artifact:specialistArtifact(body.kind as SpecialistKind,original)});
   }
   let state=original;
+  let pendingEvidence:ReturnType<typeof prepareCustomerSignalEvidence>|undefined;
   if(action==="profile"){
    if(!isObject(body.profile))return Response.json({error:"Profile object required"},{status:400});
    state=updateCompanyProfile(state,body.profile);
@@ -56,8 +57,8 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
    const source=redactSensitive(typeof body.source==="string"?body.source.trim().slice(0,160):"");
    // Validate before writing; preserve an exact (redacted) quote as a provenance-linked evidence record.
    addCustomerSignal(state,{evidenceId:"validation",kind,quote,persona,source},"validation");
-   const record=await addEvidence({projectId:id,organizationId:org,sourceType:"interview",title:`Customer ${kind}`,claim:`Interview signal: ${quote.slice(0,700)}`,excerpt:quote,confidence:.6,metadata:{kind,persona,source,origin:"founder-intelligence"}});
-   state=addCustomerSignal(state,{evidenceId:record.id,kind,quote,persona,source},crypto.randomUUID());
+   pendingEvidence=prepareCustomerSignalEvidence({projectId:id,kind,quote,persona,source});
+   state=addCustomerSignal(state,{evidenceId:pendingEvidence.id,kind,quote,persona,source},crypto.randomUUID());
   } else if(action==="rule"){
    if(!isObject(body.rule))return Response.json({error:"Pivot rule object required"},{status:400});
    const raw=body.rule;
@@ -74,8 +75,8 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
    if(typeof body.id!=="string"||typeof body.complete!=="boolean")return Response.json({error:"Move ID and completion required"},{status:400});
    state=setMoveComplete(state,body.id,body.complete);
   }else return Response.json({error:"Unknown action"},{status:400});
-  const updated=await updateProject(id,org,{founderIntelligence:state});
-  if(!updated)return Response.json({error:"Project not found"},{status:404});
+  const updated=await saveFounderIntelligence(id,org,original.revision,state,pendingEvidence);
+  if(!updated)return Response.json({error:"Concurrent project update; reload and retry"},{status:409});
   await writeAuditEvent({organizationId:org,projectId:id,actorUserId:auth.principal.userId,eventName:`founder_intelligence.${action}`,properties:{revision:state.revision,signal_count:state.signals.length}});
   return Response.json({state,pivot:evaluatePivot(state.rule)});
  }catch(error){
