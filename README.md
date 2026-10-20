@@ -83,3 +83,9 @@ npm run verify
 ```
 
 See `docs/PHASE1_IMPLEMENTATION.md` and `docs/PHASE2_IMPLEMENTATION.md` for the exact implemented/pending boundaries.
+
+## Founder Intelligence (REA 2026-10-20 extension)
+
+Within an existing project, visit `/projects/<project-id>/intelligence` or select **Founder intelligence** in the project header. The extension supports an explicitly approved company profile, redacted customer interview signals linked to evidence IDs, dated founder-controlled pivot gates, grounded deterministic daily actions and six export-only specialist drafts. The saved profile is persisted in the project brain; in PostgreSQL mode the signal and state revision are committed together under a row lock.
+
+Do not enter confidential raw transcripts without appropriate customer consent. Default local mode is an in-memory prototype; production requires configured authentication and PostgreSQL. Nothing automatically contacts prospects or executes business decisions. This feature is not a complete AtomAI clone or production-ready multitenant release; see [REA source mapping, verification and hardening gates](docs/REA_ATOMAI_20261020.md).

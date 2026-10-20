@@ -1,5 +1,5 @@
 import pg from "pg";
-import type { AgentRunRecord, BudgetStatus, ClaimRecord, EvidenceRecord, FounderProject } from "@founderos/core";
+import type { AgentRunRecord, BudgetStatus, ClaimRecord, EvidenceRecord, FounderProject, FounderIntelligenceState } from "@founderos/core";
 export interface ResearchJobInput{projectId:string;organizationId:string;kind:"research.capture_url"|"research.search";payload:Record<string,unknown>;idempotencyKey?:string}
 export interface AuditInput{organizationId:string;projectId?:string|null;actorUserId?:string|null;eventName:string;properties?:Record<string,unknown>}
 export interface FounderRepository{getProject(id:string,organizationId:string):Promise<FounderProject|null>;listProjects(organizationId:string):Promise<FounderProject[]>;upsertProject(project:FounderProject):Promise<void>;listEvidence(projectId:string,organizationId:string,limit?:number):Promise<EvidenceRecord[]>;addEvidence(record:EvidenceRecord,organizationId:string):Promise<void>;listClaims(projectId:string,organizationId:string):Promise<ClaimRecord[]>;addClaim(claim:ClaimRecord,organizationId:string):Promise<void>;addAgentRun(projectId:string,organizationId:string,run:AgentRunRecord,input?:Record<string,unknown>):Promise<void>;enqueueJob(input:ResearchJobInput):Promise<string>;listJobs(projectId:string,organizationId:string,limit?:number):Promise<Array<Record<string,unknown>>>;getBudgetStatus(projectId:string,organizationId:string):Promise<BudgetStatus>;setBudget(projectId:string,organizationId:string,dailyBudgetUsd:number,perRunBudgetUsd:number):Promise<BudgetStatus>;writeAudit(input:AuditInput):Promise<void>;listAudit(projectId:string,organizationId:string,limit?:number):Promise<Array<Record<string,unknown>>>}
@@ -19,4 +19,21 @@ async listJobs(projectId:string,organizationId:string,limit=50){const r=await th
 async getBudgetStatus(projectId:string,organizationId:string):Promise<BudgetStatus>{const r=await this.pool.query(`select p.daily_budget_usd,p.per_run_budget_usd,coalesce(sum(ar.cost_usd) filter(where ar.created_at>=date_trunc('day',now())),0) as spent_today_usd from projects p left join agent_runs ar on ar.project_id=p.id where p.id=$1 and p.organization_id=$2 group by p.id`,[projectId,organizationId]);if(!r.rows[0])throw new Error("Project not found");const dailyBudgetUsd=Number(r.rows[0].daily_budget_usd),perRunBudgetUsd=Number(r.rows[0].per_run_budget_usd),spentTodayUsd=Number(r.rows[0].spent_today_usd);return{dailyBudgetUsd,perRunBudgetUsd,spentTodayUsd,remainingTodayUsd:Math.max(0,dailyBudgetUsd-spentTodayUsd)};}
 async setBudget(projectId:string,organizationId:string,dailyBudgetUsd:number,perRunBudgetUsd:number){const r=await this.pool.query("update projects set daily_budget_usd=$3,per_run_budget_usd=$4,updated_at=now() where id=$1 and organization_id=$2 returning id",[projectId,organizationId,dailyBudgetUsd,perRunBudgetUsd]);if(!r.rowCount)throw new Error("Project not found");return this.getBudgetStatus(projectId,organizationId);}
 async writeAudit(input:AuditInput){await this.pool.query("insert into audit_events (organization_id,project_id,actor_user_id,event_name,properties) values ($1,$2,$3,$4,$5)",[input.organizationId,input.projectId??null,input.actorUserId??null,input.eventName,input.properties??{}]);}
+async saveFounderIntelligence(projectId:string,organizationId:string,expectedRevision:number,state:FounderIntelligenceState,evidence?:EvidenceRecord):Promise<FounderProject|null>{
+ const client=await this.pool.connect();
+ try{
+  await client.query("begin");
+  const locked=await client.query("select payload from projects where id=$1 and organization_id=$2 for update",[projectId,organizationId]);
+  const current=locked.rows[0]?.payload as FounderProject|undefined;
+  if(!current || (current.founderIntelligence?.revision??0)!==expectedRevision){await client.query("rollback");return null;}
+  if(evidence){
+   if(evidence.projectId!==projectId || evidence.sourceType!=="interview")throw new Error("Invalid signal evidence");
+   await client.query(`insert into evidence (id,project_id,source_url,source_type,title,claim,excerpt,confidence,content_hash,collected_at,metadata) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[evidence.id,projectId,evidence.sourceUrl??null,evidence.sourceType,evidence.title??null,evidence.claim,evidence.excerpt??null,evidence.confidence,evidence.contentHash??null,evidence.collectedAt,evidence.metadata]);
+  }
+  const updated:FounderProject={...current,founderIntelligence:state,updatedAt:new Date().toISOString()};
+  await client.query("update projects set payload=$3,updated_at=$4 where id=$1 and organization_id=$2",[projectId,organizationId,updated,updated.updatedAt]);
+  await client.query("commit");
+  return updated;
+ }catch(error){await client.query("rollback");throw error;}finally{client.release();}
+}
 async listAudit(projectId:string,organizationId:string,limit=100){const r=await this.pool.query("select id,event_name,properties,occurred_at from audit_events where project_id=$1 and organization_id=$2 order by occurred_at desc limit $3",[projectId,organizationId,limit]);return r.rows;}}
