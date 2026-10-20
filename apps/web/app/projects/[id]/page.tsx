@@ -21,7 +21,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       <header className="topbar">
         <a href="/" className="brand"><div className="logo">F</div> FounderOS</a>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <a className="pill" href={`/projects/${id}/build`}>Build execution</a>
+          <a className="pill" href={`/projects/${id}/intelligence`}>Founder intelligence</a><a className="pill" href={`/projects/${id}/build`}>Build execution</a>
           <div className="pill">Idea → evidence → product → learning</div>
         </div>
       </header>
